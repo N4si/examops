@@ -1,0 +1,334 @@
+// ExamOps — prisma/schema.prisma
+// Consolidates: base PRD section 8 (core tables) + prd2.md addendum (AI tables)
+// + streaks (described as a feature in prd2.md, never had a table — added here)
+// This is the single source of truth for the schema. Hand this file to Claude Code
+// directly instead of asking it to re-derive tables from the PRD text.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector] // pgvector — required for ContentEmbedding
+}
+
+// ---------- CORE ----------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  plan          Plan      @default(FREE)
+
+  // streak fields cached for fast dashboard reads; source of truth is DailyActivity
+  currentStreak Int       @default(0)
+  longestStreak Int       @default(0)
+  lastActiveAt  DateTime?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts           Account[]
+  sessions           Session[]
+  examAttempts       ExamAttempt[]
+  flashcardProgress  FlashcardProgress[]
+  studyPlans         StudyPlan[]
+  subscription       Subscription?
+  bookmarks          Bookmark[]
+  diagnosticResults  DiagnosticResult[]
+  roadmapGenerations RoadmapGeneration[]
+  quickQuestions     QuickQuestion[]
+  dailyActivity      DailyActivity[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+model Certification {
+  id            String   @id @default(uuid())
+  vendor        String   // "AWS" | "Azure" | "GCP" | "Kubernetes" | "DevOps" | "AI"
+  name          String
+  slug          String   @unique
+  description   String   @default("")
+  logoSlug      String   @default("")
+  domainWeights Json?    // e.g. {"IAM": 0.2, "Networking": 0.3}
+  createdAt     DateTime @default(now())
+
+  questions          Question[]
+  practiceSets       PracticeSet[]
+  flashcards         Flashcard[]
+  studyNotes         StudyNote[]
+  resources          Resource[]
+  examAttempts       ExamAttempt[]
+  studyPlans         StudyPlan[]
+  diagnosticResults  DiagnosticResult[]
+  roadmapGenerations RoadmapGeneration[]
+
+  @@map("certifications")
+}
+
+model PracticeSet {
+  id          String   @id @default(uuid())
+  certId      String
+  cert        Certification @relation(fields: [certId], references: [id])
+  number      Int      // 1..N, ordering within the cert
+  name        String   // e.g. "Practice Exam 1"
+  description String   @default("")
+  createdAt   DateTime @default(now())
+
+  questions   Question[]
+
+  @@unique([certId, number])
+  @@map("practice_sets")
+}
+
+model Question {
+  id            String     @id @default(uuid())
+  certId        String
+  cert          Certification @relation(fields: [certId], references: [id])
+  practiceSetId String?
+  practiceSet   PracticeSet? @relation(fields: [practiceSetId], references: [id])
+  domain        String
+  text          String
+  options       Json       // ["option A text", "option B text", ...]
+  correctAnswers String[]  // one or more correct option texts; length >1 = multi-select
+  explanation   String     // short, shown immediately after answering
+  detailedExplanation String @default("") // longer, shown on "see more" toggle
+  difficulty    Difficulty @default(MEDIUM)
+  createdAt     DateTime   @default(now())
+
+  @@index([certId, domain])
+  @@map("questions")
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model ExamAttempt {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  certId          String
+  cert            Certification @relation(fields: [certId], references: [id])
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  score           Float?
+  domainBreakdown Json?     // {"IAM": 0.6, "Networking": 0.8}
+
+  @@index([userId, certId])
+  @@map("exam_attempts")
+}
+
+model Flashcard {
+  id     String  @id @default(uuid())
+  certId String
+  cert   Certification @relation(fields: [certId], references: [id])
+  domain String
+  front  String
+  back   String
+
+  progress FlashcardProgress[]
+
+  @@map("flashcards")
+}
+
+model FlashcardProgress {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  flashcardId  String
+  flashcard    Flashcard @relation(fields: [flashcardId], references: [id])
+  easeFactor   Float    @default(2.5) // SM-2 algorithm
+  intervalDays Int      @default(1)
+  nextReviewAt DateTime @default(now())
+
+  @@unique([userId, flashcardId])
+  @@index([userId, nextReviewAt])
+  @@map("flashcard_progress")
+}
+
+model StudyNote {
+  id        String  @id @default(uuid())
+  certId    String
+  cert      Certification @relation(fields: [certId], references: [id])
+  domain    String
+  title     String
+  contentMd String
+
+  @@map("study_notes")
+}
+
+model Resource {
+  id     String @id @default(uuid())
+  certId String
+  cert   Certification @relation(fields: [certId], references: [id])
+  title  String
+  url    String
+  type   String // "article" | "video" | "doc"
+
+  @@map("resources")
+}
+
+model Subscription {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id])
+  stripeCustomerId String?
+  plan             Plan      @default(FREE)
+  status           String    @default("inactive")
+  renewsAt         DateTime?
+
+  @@map("subscriptions")
+}
+
+model Bookmark {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  itemType  String   // "question" | "study_note" | "resource"
+  itemId    String
+  createdAt DateTime @default(now())
+
+  @@map("bookmarks")
+}
+
+// ---------- STREAKS (feature existed in prd2.md, table did not — added here) ----------
+
+// One row per user per calendar day they did anything. currentStreak/longestStreak
+// on User are cached counters; recompute them from this table (consecutive days
+// present) whenever it's updated, rather than trusting the cached value alone.
+model DailyActivity {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  date              DateTime @db.Date
+  questionsAnswered Int      @default(0)
+  minutesStudied    Int      @default(0)
+
+  @@unique([userId, date])
+  @@map("daily_activity")
+}
+
+// ---------- AI FEATURES (from prd2.md addendum) ----------
+
+model StudyPlan {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  certId     String
+  cert       Certification @relation(fields: [certId], references: [id])
+  targetDate DateTime?
+  planJson   Json
+  createdAt  DateTime @default(now())
+
+  @@map("study_plans")
+}
+
+model DiagnosticResult {
+  id      String   @id @default(uuid())
+  userId  String
+  user    User     @relation(fields: [userId], references: [id])
+  certId  String
+  cert    Certification @relation(fields: [certId], references: [id])
+  domain  String
+  score   Float
+  takenAt DateTime @default(now())
+
+  @@map("diagnostic_results")
+}
+
+// AI Roadmap Generator + Time Estimator output (single call, combined per prd2.md)
+model RoadmapGeneration {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  certId      String
+  cert        Certification @relation(fields: [certId], references: [id])
+  targetDate  DateTime?
+  planJson    Json      // day-by-day plan + per-domain hour estimates
+  generatedAt DateTime  @default(now())
+
+  @@map("roadmap_generations")
+}
+
+// "Quick Question" / "explain this wrong answer" — context is polymorphic
+// (a question, a study note, or a general topic), so contextId is NOT a
+// enforced foreign key to any single table — validate contextType/contextId
+// pairing in application code, not at the DB layer.
+model QuickQuestion {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  contextType  String   // "question" | "study_note" | "general"
+  contextId    String?  // id within contextType's table; nullable for "general"
+  questionText String
+  answerText   String
+  createdAt    DateTime @default(now())
+
+  @@map("quick_questions")
+}
+
+// Semantic search over blogs/notes/resources — polymorphic same as above.
+// Requires the pgvector extension enabled in your Postgres instance
+// (CREATE EXTENSION IF NOT EXISTS vector;) before the first migration runs.
+model ContentEmbedding {
+  id          String                       @id @default(uuid())
+  contentType String                       // "study_note" | "resource" | "blog_post"
+  contentId   String
+  embedding   Unsupported("vector(1536)")
+  updatedAt   DateTime                     @updatedAt
+
+  @@unique([contentType, contentId])
+  @@map("content_embeddings")
+}
