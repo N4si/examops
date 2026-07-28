@@ -1,9 +1,11 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { ClipboardList } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CreatePracticeSetForm } from "@/components/admin/create-practice-set-form"
+import { EmptyState } from "@/components/empty-state"
 import { prisma } from "@/lib/prisma"
 
 export default async function AdminCertDetailPage({
@@ -49,7 +51,7 @@ export default async function AdminCertDetailPage({
         </div>
 
         {cert.practiceSets.length === 0 && (
-          <p className="text-muted-foreground">No practice sets yet.</p>
+          <EmptyState icon={ClipboardList} title="No practice sets yet. Create one above." />
         )}
 
         {cert.practiceSets.map((set) => (

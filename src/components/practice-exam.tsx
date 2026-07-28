@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { FileQuestion } from "lucide-react"
 
 import { submitExamAttempt } from "@/app/actions/exam"
 import { Button } from "@/components/ui/button"
@@ -12,6 +13,7 @@ import {
   CardHeader,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { EmptyState } from "@/components/empty-state"
 import { Label } from "@/components/ui/label"
 import { PracticeExamHeader } from "@/components/practice-exam-header"
 import {
@@ -282,7 +284,17 @@ export function PracticeExam({
   }, [phase, currentIndex, questions])
 
   if (questions.length === 0) {
-    return <p className="text-muted-foreground">No questions seeded yet.</p>
+    return (
+      <EmptyState
+        icon={FileQuestion}
+        title="No questions seeded yet for this practice exam."
+        action={
+          <Link href="/certs" className="text-sm font-medium text-brand hover:underline">
+            Browse other certifications
+          </Link>
+        }
+      />
+    )
   }
 
   const signInBanner = !isSignedIn && (

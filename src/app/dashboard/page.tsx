@@ -1,7 +1,9 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { Award, ListChecks } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
+import { EmptyState } from "@/components/empty-state"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/require-auth"
 
@@ -97,26 +99,40 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         ) : (
-          <p className="mt-4 text-muted-foreground">
-            You haven&apos;t taken a practice exam yet.{" "}
-            <Link href="/certs" className="text-brand hover:underline">
-              Browse certifications
-            </Link>{" "}
-            to get started.
-          </p>
+          <div className="mt-4">
+            <EmptyState
+              icon={ListChecks}
+              title="You haven't taken a practice exam yet."
+              action={
+                <Link
+                  href="/certs"
+                  className="text-sm font-medium text-brand hover:underline"
+                >
+                  Browse certifications
+                </Link>
+              }
+            />
+          </div>
         )}
       </section>
 
       <section className="mt-12">
         <h2 className="text-lg font-medium">Your certifications</h2>
         {yourCerts.length === 0 ? (
-          <p className="mt-4 text-muted-foreground">
-            No certifications attempted yet.{" "}
-            <Link href="/certs" className="text-brand hover:underline">
-              Browse certifications
-            </Link>{" "}
-            to start practicing.
-          </p>
+          <div className="mt-4">
+            <EmptyState
+              icon={Award}
+              title="No certifications attempted yet."
+              action={
+                <Link
+                  href="/certs"
+                  className="text-sm font-medium text-brand hover:underline"
+                >
+                  Browse certifications
+                </Link>
+              }
+            />
+          </div>
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {yourCerts.map((cert) => (

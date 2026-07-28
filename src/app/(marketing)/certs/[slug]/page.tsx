@@ -1,8 +1,11 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import type { CSSProperties } from "react"
+import { BookOpen, ClipboardList, Link2 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmptyState } from "@/components/empty-state"
 import { VendorLogo } from "@/components/vendor-logo"
 import { prisma } from "@/lib/prisma"
 
@@ -72,7 +75,17 @@ export default async function CertDetailPage({
       />
 
       {/* Header */}
-      <section className="mx-auto max-w-6xl px-6 py-24 md:py-32">
+      <section className="relative overflow-hidden px-6 py-24 md:py-32">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10"
+          style={
+            {
+              background: `radial-gradient(ellipse 60% 50% at 50% 0%, color-mix(in oklch, ${cert.brandColor} 18%, transparent), transparent 70%)`,
+            } as CSSProperties
+          }
+        />
+        <div className="mx-auto max-w-6xl">
         <div className="flex items-center gap-3">
           <VendorLogo slug={cert.logoSlug} size={32} />
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -90,6 +103,7 @@ export default async function CertDetailPage({
         {cert.description && (
           <p className="mt-3 max-w-2xl text-muted-foreground">{cert.description}</p>
         )}
+        </div>
       </section>
 
       {/* Practice exams */}
@@ -98,7 +112,12 @@ export default async function CertDetailPage({
           Practice exams
         </h2>
         {cert.practiceSets.length === 0 ? (
-          <p className="mt-6 text-muted-foreground">No practice exams yet.</p>
+          <div className="mt-6">
+            <EmptyState
+              icon={ClipboardList}
+              title="No practice exams yet. We're still writing questions for this certification."
+            />
+          </div>
         ) : (
           <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {cert.practiceSets.slice(0, 5).map((set) => {
@@ -140,7 +159,12 @@ export default async function CertDetailPage({
       <section className="mx-auto max-w-6xl px-6 py-24 md:py-32">
         <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">Exam notes</h2>
         {cert.studyNotes.length === 0 ? (
-          <p className="mt-6 text-muted-foreground">No notes yet.</p>
+          <div className="mt-6">
+            <EmptyState
+              icon={BookOpen}
+              title="No notes yet. Check back soon for domain-by-domain study notes."
+            />
+          </div>
         ) : (
           <div className="mt-6 flex flex-col gap-8">
             {Object.entries(notesByDomain).map(([domain, notes]) => (
@@ -174,7 +198,12 @@ export default async function CertDetailPage({
       <section className="mx-auto max-w-6xl px-6 py-24 md:py-32">
         <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">Resources</h2>
         {cert.resources.length === 0 ? (
-          <p className="mt-6 text-muted-foreground">No resources yet.</p>
+          <div className="mt-6">
+            <EmptyState
+              icon={Link2}
+              title="No resources yet. We'll link official docs and guides here."
+            />
+          </div>
         ) : (
           <div className="mt-6 flex flex-col gap-8">
             {Object.entries(resourcesByType).map(([type, resources]) => (

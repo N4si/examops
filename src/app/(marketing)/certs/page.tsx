@@ -1,8 +1,11 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import type { CSSProperties } from "react"
+import { SearchX } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CertFilterChips } from "@/components/marketing/cert-filter-chips"
+import { EmptyState } from "@/components/empty-state"
 import { VendorLogo } from "@/components/vendor-logo"
 import { cn } from "@/lib/utils"
 import { prisma } from "@/lib/prisma"
@@ -44,14 +47,37 @@ export default async function CertsIndexPage({
         <CertFilterChips />
       </div>
 
+      {certs.length === 0 ? (
+        <div className="mt-8">
+          <EmptyState
+            icon={SearchX}
+            title="No certifications match this filter. Try a different vendor."
+            action={
+              <Link href="/certs" className="text-sm font-medium text-brand hover:underline">
+                Clear filter
+              </Link>
+            }
+          />
+        </div>
+      ) : (
       <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {certs.map((cert) => {
           const hasSets = cert._count.practiceSets > 0
 
           const card = (
             <Card
-              className={cn("h-full", !hasSets && "opacity-60")}
-              style={{ borderTopWidth: 2, borderTopColor: cert.brandColor }}
+              className={cn(
+                "h-full transition-shadow",
+                !hasSets && "opacity-60",
+                hasSets && "hover:shadow-[0_0_20px_-4px_var(--brand-color)]"
+              )}
+              style={
+                {
+                  borderTopWidth: 2,
+                  borderTopColor: cert.brandColor,
+                  "--brand-color": cert.brandColor,
+                } as CSSProperties
+              }
             >
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -91,10 +117,8 @@ export default async function CertsIndexPage({
             </div>
           )
         })}
-        {certs.length === 0 && (
-          <p className="text-muted-foreground">No certifications match this filter.</p>
-        )}
       </div>
+      )}
     </section>
   )
 }

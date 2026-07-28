@@ -1,6 +1,8 @@
 import Link from "next/link"
+import { GraduationCap } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmptyState } from "@/components/empty-state"
 import { prisma } from "@/lib/prisma"
 
 export default async function PracticeIndexPage() {
@@ -14,7 +16,15 @@ export default async function PracticeIndexPage() {
       <h1 className="text-2xl font-bold">Choose a certification</h1>
       <div className="flex flex-col gap-3">
         {certs.length === 0 && (
-          <p className="text-muted-foreground">No certifications yet.</p>
+          <EmptyState
+            icon={GraduationCap}
+            title="No certifications yet."
+            action={
+              <Link href="/certs" className="text-sm font-medium text-brand hover:underline">
+                Browse certifications
+              </Link>
+            }
+          />
         )}
         {certs.map((cert) => (
           <Link key={cert.id} href={`/certs/${cert.slug}`}>

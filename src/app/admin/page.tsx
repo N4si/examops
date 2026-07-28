@@ -1,7 +1,9 @@
 import Link from "next/link"
+import { LayoutGrid } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmptyState } from "@/components/empty-state"
 import { VendorLogo } from "@/components/vendor-logo"
 import { prisma } from "@/lib/prisma"
 
@@ -25,7 +27,15 @@ export default async function AdminDashboardPage() {
 
       <div className="flex flex-col gap-3">
         {certs.length === 0 && (
-          <p className="text-muted-foreground">No certifications yet.</p>
+          <EmptyState
+            icon={LayoutGrid}
+            title="No certifications yet."
+            action={
+              <Button size="sm" render={<Link href="/admin/questions/new" />}>
+                Add question
+              </Button>
+            }
+          />
         )}
         {certs.map((cert) => (
           <Link key={cert.id} href={`/admin/certs/${cert.slug}`}>

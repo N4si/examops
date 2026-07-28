@@ -3,10 +3,12 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { CheckCircle2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { EmptyState } from "@/components/empty-state"
 import { Label } from "@/components/ui/label"
 
 type QuestionSummary = { id: string; text: string; domain: string }
@@ -88,7 +90,10 @@ export function AssignQuestionsForm({
       )}
 
       {questions.length === 0 ? (
-        <p className="text-muted-foreground">No unassigned questions for this certification.</p>
+        <EmptyState
+          icon={CheckCircle2}
+          title="No unassigned questions for this certification — everything's been assigned."
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {questions.map((q) => (

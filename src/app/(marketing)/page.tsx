@@ -1,9 +1,12 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import type { CSSProperties } from "react"
+import { SearchX } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CertFilterChips } from "@/components/marketing/cert-filter-chips"
+import { EmptyState } from "@/components/empty-state"
 import { PricingTiers } from "@/components/marketing/pricing-tiers"
 import { SampleQuestionPreview } from "@/components/marketing/sample-question-preview"
 import { VendorLogo } from "@/components/vendor-logo"
@@ -58,8 +61,18 @@ function HomeCertCard({ cert }: { cert: CertWithCounts }) {
 
   const content = (
     <Card
-      className={cn("group relative h-full", !hasSets && "opacity-60")}
-      style={{ borderTopWidth: 2, borderTopColor: cert.brandColor }}
+      className={cn(
+        "group relative h-full transition-shadow",
+        !hasSets && "opacity-60",
+        hasSets && "hover:shadow-[0_0_20px_-4px_var(--brand-color)]"
+      )}
+      style={
+        {
+          borderTopWidth: 2,
+          borderTopColor: cert.brandColor,
+          "--brand-color": cert.brandColor,
+        } as CSSProperties
+      }
     >
       <div className="flex flex-col gap-1.5 p-4">
         <div className="flex items-center gap-2">
@@ -173,14 +186,25 @@ export default async function HomePage({
           <CertFilterChips />
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {certs.map((cert) => (
-            <HomeCertCard key={cert.id} cert={cert} />
-          ))}
-          {certs.length === 0 && (
-            <p className="text-muted-foreground">No certifications match this filter.</p>
-          )}
-        </div>
+        {certs.length === 0 ? (
+          <div className="mt-6">
+            <EmptyState
+              icon={SearchX}
+              title="No certifications match this filter. Try a different vendor."
+              action={
+                <Link href="/" className="text-sm font-medium text-brand hover:underline">
+                  Clear filter
+                </Link>
+              }
+            />
+          </div>
+        ) : (
+          <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {certs.map((cert) => (
+              <HomeCertCard key={cert.id} cert={cert} />
+            ))}
+          </div>
+        )}
 
         {certCount > 6 && (
           <div className="mt-6">
