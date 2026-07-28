@@ -43,10 +43,6 @@ type AnswerState = { selected: string[]; submitted: boolean; showDetailed: boole
 type Mode = "practice" | "exam"
 type Phase = "setup" | "in-progress" | "review" | "summary"
 
-// CLF-C02 real exam duration; hardcoded until per-cert duration lands on the
-// Certification schema.
-const EXAM_DURATION_MINUTES = 90
-
 function sameSet(a: string[], b: string[]) {
   if (a.length !== b.length) return false
   const bSet = new Set(b)
@@ -66,6 +62,7 @@ export function PracticeExam({
   certName,
   brandColor,
   passingScore,
+  examDurationMinutes,
   isSignedIn = false,
 }: {
   questions: PracticeQuestion[]
@@ -73,6 +70,7 @@ export function PracticeExam({
   certName: string
   brandColor: string
   passingScore: number | null
+  examDurationMinutes: number
   isSignedIn?: boolean
 }) {
   const [phase, setPhase] = useState<Phase>("setup")
@@ -90,7 +88,7 @@ export function PracticeExam({
   const [finalDomainStats, setFinalDomainStats] = useState<DomainStat[]>([])
   const [finalMissed, setFinalMissed] = useState<MissedQuestion[]>([])
 
-  const examDurationSeconds = EXAM_DURATION_MINUTES * 60
+  const examDurationSeconds = examDurationMinutes * 60
   const remainingSeconds = examDurationSeconds - elapsedSeconds
   const isOverTime = mode === "exam" && remainingSeconds < 5 * 60
 
@@ -347,7 +345,7 @@ export function PracticeExam({
                 <Label htmlFor="mode-exam" className="flex flex-col items-start gap-1 font-normal">
                   <span className="text-base font-medium text-foreground">Exam mode</span>
                   <span className="text-sm text-muted-foreground">
-                    Submit at the end only, {EXAM_DURATION_MINUTES}-minute countdown, no
+                    Submit at the end only, {examDurationMinutes}-minute countdown, no
                     per-question feedback — like the real thing.
                   </span>
                 </Label>

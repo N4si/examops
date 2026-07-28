@@ -42,6 +42,7 @@ export default async function PracticeSetPage({
         certName={`${set.cert.name} — ${set.name}`}
         brandColor={set.cert.brandColor}
         passingScore={set.cert.passingScore}
+        examDurationMinutes={set.cert.examDurationMinutes}
         isSignedIn={Boolean(session?.user)}
       />
     </main>

@@ -101,6 +101,8 @@ model Certification {
   logoSlug      String   @default("")
   brandColor    String   @default("#6366f1") // indigo fallback
   passingScore  Int?     @default(70)
+  examDurationMinutes Int @default(90)
+  examQuestionCount   Int @default(65)
   domainWeights Json?    // e.g. {"IAM": 0.2, "Networking": 0.3}
   createdAt     DateTime @default(now())
 

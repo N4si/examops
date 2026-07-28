@@ -22,6 +22,8 @@ async function main() {
     logoSlug: 'aws',
     brandColor: '#FF9900',
     passingScore: 70,
+    examDurationMinutes: 90,
+    examQuestionCount: 65,
     domainWeights: {
       'Cloud Concepts': 0.24,
       'Security and Compliance': 0.30,
