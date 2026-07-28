@@ -49,6 +49,7 @@ type CertWithCounts = {
   vendor: string
   name: string
   logoSlug: string
+  brandColor: string
   _count: { questions: number; practiceSets: number }
 }
 
@@ -56,7 +57,10 @@ function HomeCertCard({ cert }: { cert: CertWithCounts }) {
   const hasSets = cert._count.practiceSets > 0
 
   const content = (
-    <Card className={cn("group relative h-full", !hasSets && "opacity-60")}>
+    <Card
+      className={cn("group relative h-full", !hasSets && "opacity-60")}
+      style={{ borderTopWidth: 2, borderTopColor: cert.brandColor }}
+    >
       <div className="flex flex-col gap-1.5 p-4">
         <div className="flex items-center gap-2">
           <VendorLogo slug={cert.logoSlug} size={20} />
@@ -108,7 +112,15 @@ export default async function HomePage({
     prisma.practiceSet.count(),
     prisma.certification.findMany({
       where: vendor && vendor !== "All" ? { vendor } : undefined,
-      include: { _count: { select: { questions: true, practiceSets: true } } },
+      select: {
+        id: true,
+        slug: true,
+        vendor: true,
+        name: true,
+        logoSlug: true,
+        brandColor: true,
+        _count: { select: { questions: true, practiceSets: true } },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.question.findFirst({
@@ -133,7 +145,7 @@ export default async function HomePage({
           <h1 className="max-w-2xl text-4xl font-medium tracking-tight md:text-5xl">
             Cloud, DevOps, and AI certification prep.
           </h1>
-          <p className="max-w-xl text-sm text-muted-foreground md:text-base">
+          <p className="max-w-xl text-base text-muted-foreground">
             Practice exams, quick notes, and AI that explains what you got wrong.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
@@ -155,7 +167,7 @@ export default async function HomePage({
         <p className="text-sm tracking-wider text-muted-foreground uppercase">
           Certifications
         </p>
-        <hr className="mt-3 border-white/10" />
+        <hr className="mt-3 border-border" />
 
         <div className="mt-6">
           <CertFilterChips />
@@ -184,23 +196,23 @@ export default async function HomePage({
 
       {/* Value strip */}
       <section className="mx-auto max-w-6xl px-6 py-16">
-        <div className="grid gap-8 md:grid-cols-3 md:divide-x md:divide-white/10">
+        <div className="grid gap-8 md:grid-cols-3 md:divide-x md:divide-border">
           {VALUE_PROPS.map((value, i) => (
             <div key={value.title} className={cn("flex flex-col gap-1.5", i > 0 && "md:pl-8")}>
               <h3 className="text-base font-medium">{value.title}</h3>
-              <p className="text-sm text-muted-foreground">{value.body}</p>
+              <p className="text-base text-muted-foreground">{value.body}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="bg-white/[0.02] py-16">
+      <section id="how-it-works" className="bg-muted/50 py-16">
         <div className="mx-auto max-w-6xl px-6">
           <p className="text-sm tracking-wider text-muted-foreground uppercase">
             How it works
           </p>
-          <hr className="mt-3 border-white/10" />
+          <hr className="mt-3 border-border" />
           <ol className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {HOW_IT_WORKS.map((step, i) => (
               <li key={step} className="flex flex-col gap-1.5">
@@ -217,7 +229,7 @@ export default async function HomePage({
         <p className="text-sm tracking-wider text-muted-foreground uppercase">
           Sample question
         </p>
-        <hr className="mt-3 border-white/10" />
+        <hr className="mt-3 border-border" />
         <p className="mt-6 text-sm text-muted-foreground">
           A real practice question — this is what every question looks like.
         </p>
@@ -249,14 +261,14 @@ export default async function HomePage({
 
       {/* Pricing */}
       <section className="mx-auto max-w-6xl px-6 py-16">
-        <hr className="border-white/10" />
+        <hr className="border-border" />
         <div className="mt-8">
           <PricingTiers />
         </div>
       </section>
 
       {/* Final CTA */}
-      <section className="border-t border-white/10 py-20 text-center">
+      <section className="border-t border-border py-20 text-center">
         <div className="mx-auto max-w-6xl px-6">
           <p className="text-2xl font-medium tracking-tight md:text-3xl">
             Start practicing. Free.

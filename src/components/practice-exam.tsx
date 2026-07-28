@@ -57,7 +57,7 @@ export function PracticeExam({
   )
 
   const signInBanner = !isSignedIn && (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-white/10 bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-border bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
       <span>Sign in to save your progress.</span>
       <Link href="/login" className="font-medium text-brand hover:underline">
         Sign in
@@ -192,7 +192,9 @@ export function PracticeExam({
           Question {index + 1} of {questions.length} · {question.domain}
           {isMultiSelect && ` · Choose ${question.correctAnswers.length}`}
         </p>
-        <CardTitle className="text-base font-normal">{question.text}</CardTitle>
+        <CardTitle className="text-xl leading-relaxed font-normal md:text-2xl">
+          {question.text}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {isMultiSelect ? (
@@ -216,7 +218,7 @@ export function PracticeExam({
                     onCheckedChange={() => toggleOption(option)}
                     disabled={submitted}
                   />
-                  <Label htmlFor={option} className="flex-1 font-normal">
+                  <Label htmlFor={option} className="flex-1 text-base font-normal md:text-lg">
                     {option}
                   </Label>
                 </div>
@@ -243,7 +245,7 @@ export function PracticeExam({
                   )}
                 >
                   <RadioGroupItem value={option} id={option} />
-                  <Label htmlFor={option} className="flex-1 font-normal">
+                  <Label htmlFor={option} className="flex-1 text-base font-normal md:text-lg">
                     {option}
                   </Label>
                 </div>
@@ -253,7 +255,7 @@ export function PracticeExam({
         )}
 
         {submitted && (
-          <div className="rounded-md bg-muted p-3 text-sm">
+          <div className="rounded-md bg-muted p-3 text-base leading-relaxed">
             <p className="font-medium">
               {isCorrect ? "Correct!" : "Incorrect."}
             </p>

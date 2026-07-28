@@ -82,6 +82,11 @@ export default async function CertDetailPage({
         <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
           {cert.name}
         </h1>
+        <div
+          aria-hidden="true"
+          className="mt-3 h-1 w-16 rounded-full"
+          style={{ backgroundColor: cert.brandColor }}
+        />
         {cert.description && (
           <p className="mt-3 max-w-2xl text-muted-foreground">{cert.description}</p>
         )}

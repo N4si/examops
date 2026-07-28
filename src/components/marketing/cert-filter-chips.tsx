@@ -28,7 +28,7 @@ export function CertFilterChips() {
             className={cn(
               "shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
               isActive
-                ? "border-transparent bg-white/10 text-foreground"
+                ? "border-transparent bg-foreground/10 text-foreground"
                 : "border-border text-muted-foreground hover:text-foreground"
             )}
           >

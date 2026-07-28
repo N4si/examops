@@ -99,6 +99,7 @@ model Certification {
   slug          String   @unique
   description   String   @default("")
   logoSlug      String   @default("")
+  brandColor    String   @default("#6366f1") // indigo fallback
   domainWeights Json?    // e.g. {"IAM": 0.2, "Networking": 0.3}
   createdAt     DateTime @default(now())
 

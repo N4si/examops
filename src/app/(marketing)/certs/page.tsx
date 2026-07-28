@@ -49,7 +49,10 @@ export default async function CertsIndexPage({
           const hasSets = cert._count.practiceSets > 0
 
           const card = (
-            <Card className={cn("h-full", !hasSets && "opacity-60")}>
+            <Card
+              className={cn("h-full", !hasSets && "opacity-60")}
+              style={{ borderTopWidth: 2, borderTopColor: cert.brandColor }}
+            >
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <VendorLogo slug={cert.logoSlug} size={24} />

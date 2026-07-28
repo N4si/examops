@@ -35,7 +35,7 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <p className="mt-6 text-sm text-muted-foreground">
+      <p className="mt-6 text-base text-muted-foreground">
         More settings — notification preferences, plan management, data export — are
         coming soon.
       </p>

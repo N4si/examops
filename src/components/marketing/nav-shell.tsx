@@ -12,6 +12,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
 
 type NavLink = { label: string; href: string }
@@ -51,7 +52,7 @@ export function NavShell({
       className={cn(
         "sticky top-0 z-50 border-b transition-colors duration-150",
         scrolled
-          ? "border-white/10 bg-background/80 backdrop-blur-md"
+          ? "border-border bg-background/80 backdrop-blur-md"
           : "border-transparent bg-transparent"
       )}
     >
@@ -75,7 +76,10 @@ export function NavShell({
           ))}
         </div>
 
-        <div className="hidden items-center gap-2 md:flex">{authSlot}</div>
+        <div className="hidden items-center gap-2 md:flex">
+          <ThemeToggle />
+          {authSlot}
+        </div>
 
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
@@ -106,7 +110,13 @@ export function NavShell({
                 </a>
               ))}
             </div>
-            <div className="mt-auto flex flex-col gap-2 p-4">{authSlot}</div>
+            <div className="mt-auto flex flex-col gap-2 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Theme</span>
+                <ThemeToggle />
+              </div>
+              {authSlot}
+            </div>
           </SheetContent>
         </Sheet>
       </nav>

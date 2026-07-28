@@ -1,23 +1,19 @@
-import * as simpleIcons from "simple-icons"
-
-type SimpleIcon = { title: string; slug: string; path: string }
-
-// simple-icons exports each icon as a top-level `si<PascalSlug>` named export
-// (e.g. slug "googlecloud" -> `siGooglecloud`) rather than a `icons/{slug}`
-// subpath module, and this version of the package has no AWS or Azure icon at
-// all (removed upstream for trademark reasons) — resolveIcon returning null
-// for those slugs is expected and falls through to the placeholder below.
-function resolveIcon(slug: string): SimpleIcon | null {
-  if (!slug) return null
-  const key = `si${slug.charAt(0).toUpperCase()}${slug.slice(1)}`
-  const icon = (simpleIcons as unknown as Record<string, SimpleIcon>)[key]
-  return icon ?? null
-}
+// Local SVGs in public/vendors/ — simple-icons is missing AWS and Azure
+// (removed upstream for trademark reasons), so every vendor logo is sourced
+// and stored locally instead of depending on a third-party icon package.
+const KNOWN_VENDORS = new Set([
+  "aws",
+  "azure",
+  "gcp",
+  "kubernetes",
+  "docker",
+  "github",
+  "hashicorp",
+  "terraform",
+])
 
 export function VendorLogo({ slug, size = 24 }: { slug: string; size?: number }) {
-  const icon = resolveIcon(slug)
-
-  if (!icon) {
+  if (!slug || !KNOWN_VENDORS.has(slug)) {
     return (
       <div
         className="shrink-0 rounded-full bg-muted"
@@ -28,16 +24,14 @@ export function VendorLogo({ slug, size = 24 }: { slug: string; size?: number })
   }
 
   return (
-    <svg
-      viewBox="0 0 24 24"
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/vendors/${slug}.svg`}
+      alt={`${slug} logo`}
       width={size}
       height={size}
-      fill="currentColor"
-      role="img"
-      aria-label={icon.title}
       className="shrink-0"
-    >
-      <path d={icon.path} />
-    </svg>
+      style={{ width: size, height: size, objectFit: "contain" }}
+    />
   )
 }

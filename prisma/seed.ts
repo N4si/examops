@@ -13,48 +13,57 @@ function toArray(correctAnswer: string): string[] {
 }
 
 async function main() {
+  const awsFields = {
+    vendor: 'AWS',
+    name: 'AWS Certified Cloud Practitioner (CLF-C02)',
+    slug: 'aws-cloud-practitioner',
+    description:
+      'The foundational AWS certification — covers cloud concepts, security, core services, and billing for anyone getting started with AWS.',
+    logoSlug: 'aws',
+    brandColor: '#FF9900',
+    domainWeights: {
+      'Cloud Concepts': 0.24,
+      'Security and Compliance': 0.30,
+      'Cloud Technology and Services': 0.34,
+      'Billing, Pricing and Support': 0.12,
+    },
+  };
+
   const cert = await prisma.certification.upsert({
     where: { slug: 'aws-cloud-practitioner' },
-    update: {},
-    create: {
-      vendor: 'AWS',
-      name: 'AWS Certified Cloud Practitioner (CLF-C02)',
-      slug: 'aws-cloud-practitioner',
-      description:
-        'The foundational AWS certification — covers cloud concepts, security, core services, and billing for anyone getting started with AWS.',
-      logoSlug: 'amazonaws',
-      domainWeights: {
-        'Cloud Concepts': 0.24,
-        'Security and Compliance': 0.30,
-        'Cloud Technology and Services': 0.34,
-        'Billing, Pricing and Support': 0.12,
-      },
-    },
+    update: awsFields,
+    create: awsFields,
   });
+
+  const azureFields = {
+    vendor: 'Azure',
+    name: 'Microsoft Azure Fundamentals (AZ-900)',
+    slug: 'az-900',
+    description: "Microsoft's foundational Azure certification. Cloud concepts and core services.",
+    logoSlug: 'azure',
+    brandColor: '#0078D4',
+  };
 
   await prisma.certification.upsert({
     where: { slug: 'az-900' },
-    update: {},
-    create: {
-      vendor: 'Azure',
-      name: 'Microsoft Azure Fundamentals (AZ-900)',
-      slug: 'az-900',
-      description: "Microsoft's foundational Azure certification. Cloud concepts and core services.",
-      logoSlug: 'microsoftazure',
-    },
+    update: azureFields,
+    create: azureFields,
   });
+
+  const gcpFields = {
+    vendor: 'GCP',
+    name: 'Associate Cloud Engineer',
+    slug: 'associate-cloud-engineer',
+    description:
+      "Google Cloud's entry-level certification for deploying and managing GCP resources.",
+    logoSlug: 'gcp',
+    brandColor: '#4285F4',
+  };
 
   await prisma.certification.upsert({
     where: { slug: 'associate-cloud-engineer' },
-    update: {},
-    create: {
-      vendor: 'GCP',
-      name: 'Associate Cloud Engineer',
-      slug: 'associate-cloud-engineer',
-      description:
-        "Google Cloud's entry-level certification for deploying and managing GCP resources.",
-      logoSlug: 'googlecloud',
-    },
+    update: gcpFields,
+    create: gcpFields,
   });
 
   const questions = [

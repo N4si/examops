@@ -31,7 +31,7 @@ export default async function StudyNotePage({
         {note.title}
       </h1>
 
-      <div className="prose prose-invert mt-8 max-w-none">
+      <div className="prose prose-invert prose-lg mt-8 max-w-none">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.contentMd}</ReactMarkdown>
       </div>
     </article>
