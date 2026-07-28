@@ -100,6 +100,7 @@ model Certification {
   description   String   @default("")
   logoSlug      String   @default("")
   brandColor    String   @default("#6366f1") // indigo fallback
+  passingScore  Int?     @default(70)
   domainWeights Json?    // e.g. {"IAM": 0.2, "Networking": 0.3}
   createdAt     DateTime @default(now())
 

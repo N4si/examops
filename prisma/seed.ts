@@ -21,6 +21,7 @@ async function main() {
       'The foundational AWS certification — covers cloud concepts, security, core services, and billing for anyone getting started with AWS.',
     logoSlug: 'aws',
     brandColor: '#FF9900',
+    passingScore: 70,
     domainWeights: {
       'Cloud Concepts': 0.24,
       'Security and Compliance': 0.30,
@@ -42,6 +43,7 @@ async function main() {
     description: "Microsoft's foundational Azure certification. Cloud concepts and core services.",
     logoSlug: 'azure',
     brandColor: '#0078D4',
+    passingScore: 70,
   };
 
   await prisma.certification.upsert({
@@ -58,6 +60,7 @@ async function main() {
       "Google Cloud's entry-level certification for deploying and managing GCP resources.",
     logoSlug: 'gcp',
     brandColor: '#4285F4',
+    passingScore: 70,
   };
 
   await prisma.certification.upsert({

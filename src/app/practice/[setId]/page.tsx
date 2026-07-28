@@ -35,13 +35,13 @@ export default async function PracticeSetPage({
   }))
 
   return (
-    <main className="mx-auto max-w-2xl p-8">
-      <h1 className="mb-6 text-2xl font-semibold">
-        {set.cert.name} — {set.name}
-      </h1>
+    <main className="mx-auto max-w-4xl p-6 md:p-8">
       <PracticeExam
         questions={questions}
         certId={set.certId}
+        certName={`${set.cert.name} — ${set.name}`}
+        brandColor={set.cert.brandColor}
+        passingScore={set.cert.passingScore}
         isSignedIn={Boolean(session?.user)}
       />
     </main>

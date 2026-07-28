@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 
 import { submitExamAttempt } from "@/app/actions/exam"
@@ -10,10 +10,20 @@ import {
   CardContent,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { PracticeExamHeader } from "@/components/practice-exam-header"
+import {
+  PracticeExamNavigator,
+  type NavigatorQuestionStatus,
+} from "@/components/practice-exam-navigator"
+import { PracticeExamReview } from "@/components/practice-exam-review"
+import {
+  PracticeExamSummary,
+  type DomainStat,
+  type MissedQuestion,
+} from "@/components/practice-exam-summary"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { cn } from "@/lib/utils"
 
@@ -27,55 +37,100 @@ export type PracticeQuestion = {
   detailedExplanation: string
 }
 
+type AnswerState = { selected: string[]; submitted: boolean; showDetailed: boolean }
+type Mode = "practice" | "exam"
+type Phase = "setup" | "in-progress" | "review" | "summary"
+
+// CLF-C02 real exam duration; hardcoded until per-cert duration lands on the
+// Certification schema.
+const EXAM_DURATION_MINUTES = 90
+
 function sameSet(a: string[], b: string[]) {
   if (a.length !== b.length) return false
   const bSet = new Set(b)
   return a.every((item) => bSet.has(item))
 }
 
+function formatClock(totalSeconds: number) {
+  const clamped = Math.max(0, totalSeconds)
+  const m = Math.floor(clamped / 60)
+  const s = clamped % 60
+  return `${m}:${String(s).padStart(2, "0")}`
+}
+
 export function PracticeExam({
   questions,
   certId,
+  certName,
+  brandColor,
+  passingScore,
   isSignedIn = false,
 }: {
   questions: PracticeQuestion[]
   certId: string
+  certName: string
+  brandColor: string
+  passingScore: number | null
   isSignedIn?: boolean
 }) {
-  const [index, setIndex] = useState(0)
-  const [selected, setSelected] = useState<string[]>([])
-  const [submitted, setSubmitted] = useState(false)
-  const [showDetailed, setShowDetailed] = useState(false)
-  const [correctCount, setCorrectCount] = useState(0)
-  const [finished, setFinished] = useState(false)
-  const [domainStats, setDomainStats] = useState<
-    Record<string, { correct: number; total: number }>
-  >({})
-  const [startedAt] = useState(() => new Date())
+  const [phase, setPhase] = useState<Phase>("setup")
+  const [mode, setMode] = useState<Mode>("practice")
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [answers, setAnswers] = useState<Record<string, AnswerState>>({})
+  const [flagged, setFlagged] = useState<Set<string>>(new Set())
+  const [examStartedAt, setExamStartedAt] = useState<Date | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
     "idle"
   )
+  const [finalCorrect, setFinalCorrect] = useState(0)
+  const [finalDomainStats, setFinalDomainStats] = useState<DomainStat[]>([])
+  const [finalMissed, setFinalMissed] = useState<MissedQuestion[]>([])
 
-  const signInBanner = !isSignedIn && (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-border bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
-      <span>Sign in to save your progress.</span>
-      <Link href="/login" className="font-medium text-brand hover:underline">
-        Sign in
-      </Link>
-    </div>
-  )
+  const examDurationSeconds = EXAM_DURATION_MINUTES * 60
+  const remainingSeconds = examDurationSeconds - elapsedSeconds
+  const isOverTime = mode === "exam" && remainingSeconds < 5 * 60
 
-  async function persistAttempt(finalCorrectCount: number) {
-    setSaveState("saving")
-    const domainBreakdown: Record<string, number> = {}
-    for (const [domain, stat] of Object.entries(domainStats)) {
-      domainBreakdown[domain] = stat.total > 0 ? stat.correct / stat.total : 0
+  function getAnswerState(questionId: string): AnswerState {
+    return answers[questionId] ?? { selected: [], submitted: false, showDetailed: false }
+  }
+
+  function computeResults() {
+    let correct = 0
+    const domainMap: Record<string, { correct: number; total: number }> = {}
+    const missed: MissedQuestion[] = []
+
+    for (const q of questions) {
+      const selected = getAnswerState(q.id).selected
+      const isCorrect = sameSet(selected, q.correctAnswers)
+      if (isCorrect) {
+        correct++
+      } else {
+        missed.push({
+          text: q.text,
+          options: q.options,
+          correctAnswers: q.correctAnswers,
+          explanation: q.explanation,
+          detailedExplanation: q.detailedExplanation,
+        })
+      }
+      const dm = domainMap[q.domain] ?? { correct: 0, total: 0 }
+      dm.total += 1
+      if (isCorrect) dm.correct += 1
+      domainMap[q.domain] = dm
     }
 
+    return { correct, domainMap, missed }
+  }
+
+  async function persistAttempt(finalCorrectCount: number, domainBreakdown: Record<string, number>) {
+    if (!examStartedAt) return
+    setSaveState("saving")
     try {
       const result = await submitExamAttempt({
         certId,
-        startedAt: startedAt.toISOString(),
+        startedAt: examStartedAt.toISOString(),
         score: finalCorrectCount / questions.length,
         domainBreakdown,
         questionsAnswered: questions.length,
@@ -86,209 +141,439 @@ export function PracticeExam({
     }
   }
 
+  function finalizeExam() {
+    const { correct, domainMap, missed } = computeResults()
+    const domainStats: DomainStat[] = Object.entries(domainMap).map(([domain, stat]) => ({
+      domain,
+      correct: stat.correct,
+      total: stat.total,
+    }))
+    setFinalCorrect(correct)
+    setFinalDomainStats(domainStats)
+    setFinalMissed(missed)
+    setPhase("summary")
+
+    if (isSignedIn) {
+      const domainBreakdown: Record<string, number> = {}
+      for (const [domain, stat] of Object.entries(domainMap)) {
+        domainBreakdown[domain] = stat.total > 0 ? stat.correct / stat.total : 0
+      }
+      void persistAttempt(correct, domainBreakdown)
+    }
+  }
+
+  // Timer: ticks while an attempt is actively in progress (including review,
+  // which still counts against exam-mode time). Stops on setup/summary.
+  useEffect(() => {
+    if (phase !== "in-progress" && phase !== "review") return
+    const interval = setInterval(() => {
+      setElapsedSeconds((s) => s + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [phase])
+
+  // Exam-mode auto-submit when the countdown hits zero.
+  useEffect(() => {
+    if (mode !== "exam" || phase !== "in-progress") return
+    if (remainingSeconds > 0) return
+    finalizeExam()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remainingSeconds, mode, phase])
+
+  function startExam() {
+    setExamStartedAt(new Date())
+    setPhase("in-progress")
+  }
+
+  function goToIndex(index: number) {
+    if (index < 0 || index >= questions.length) return
+    setCurrentIndex(index)
+  }
+
+  function toggleOption(option: string) {
+    const q = questions[currentIndex]
+    const isMultiSelect = q.correctAnswers.length > 1
+    setAnswers((current) => {
+      const existing = current[q.id] ?? { selected: [], submitted: false, showDetailed: false }
+      if (existing.submitted) return current
+      const nextSelected = isMultiSelect
+        ? existing.selected.includes(option)
+          ? existing.selected.filter((o) => o !== option)
+          : [...existing.selected, option]
+        : [option]
+      return { ...current, [q.id]: { ...existing, selected: nextSelected } }
+    })
+  }
+
+  function toggleFlag(questionId: string) {
+    setFlagged((current) => {
+      const next = new Set(current)
+      if (next.has(questionId)) next.delete(questionId)
+      else next.add(questionId)
+      return next
+    })
+  }
+
+  function handleSubmitAnswer() {
+    const q = questions[currentIndex]
+    setAnswers((current) => ({
+      ...current,
+      [q.id]: { ...getAnswerState(q.id), submitted: true },
+    }))
+  }
+
+  function handleToggleDetailed() {
+    const q = questions[currentIndex]
+    setAnswers((current) => ({
+      ...current,
+      [q.id]: { ...getAnswerState(q.id), showDetailed: true },
+    }))
+  }
+
+  function handleFinishExam() {
+    const unansweredCount = questions.filter((q) => getAnswerState(q.id).selected.length === 0)
+      .length
+    if (mode === "exam" && unansweredCount > 0) {
+      const proceed = window.confirm(
+        `You have ${unansweredCount} unanswered question${unansweredCount === 1 ? "" : "s"}. Go to review anyway?`
+      )
+      if (!proceed) return
+    }
+    setPhase("review")
+  }
+
+  function handleRetake() {
+    setPhase("setup")
+    setMode("practice")
+    setCurrentIndex(0)
+    setAnswers({})
+    setFlagged(new Set())
+    setExamStartedAt(null)
+    setElapsedSeconds(0)
+    setSaveState("idle")
+  }
+
+  // Keyboard shortcuts: 1-4 select options, F flag, N/P navigate, ? shows help.
+  useEffect(() => {
+    if (phase !== "in-progress") return
+
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return
+
+      const q = questions[currentIndex]
+      if (e.key >= "1" && e.key <= "9") {
+        const idx = Number(e.key) - 1
+        if (idx < q.options.length) toggleOption(q.options[idx])
+      } else if (e.key.toLowerCase() === "f") {
+        toggleFlag(q.id)
+      } else if (e.key.toLowerCase() === "n") {
+        goToIndex(currentIndex + 1)
+      } else if (e.key.toLowerCase() === "p") {
+        goToIndex(currentIndex - 1)
+      } else if (e.key === "?") {
+        setShortcutsOpen((s) => !s)
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentIndex, questions])
+
   if (questions.length === 0) {
     return <p className="text-muted-foreground">No questions seeded yet.</p>
   }
 
-  if (finished) {
+  const signInBanner = !isSignedIn && (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-border bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
+      <span>Sign in to save your progress.</span>
+      <Link href="/login" className="font-medium text-brand hover:underline">
+        Sign in
+      </Link>
+    </div>
+  )
+
+  // ---------- Setup screen ----------
+  if (phase === "setup") {
     return (
-      <>
+      <div className="mx-auto flex max-w-xl flex-col gap-6">
         {signInBanner}
         <Card>
           <CardHeader>
-            <CardTitle>Practice complete</CardTitle>
+            <p className="text-sm text-muted-foreground">{certName}</p>
+            <h1 className="text-xl font-medium">
+              {questions.length} question{questions.length === 1 ? "" : "s"}
+            </h1>
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <p className="text-lg">
-              Score: {correctCount} / {questions.length}
-            </p>
-            {isSignedIn && saveState === "saved" && (
-              <p className="text-sm text-muted-foreground">Progress saved.</p>
-            )}
-            {isSignedIn && saveState === "error" && (
-              <p className="text-sm text-destructive">
-                Couldn&apos;t save this attempt — your score above is still accurate.
-              </p>
-            )}
+          <CardContent className="flex flex-col gap-4">
+            <RadioGroup value={mode} onValueChange={(v) => setMode(v as Mode)}>
+              <div
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-4",
+                  mode === "practice" && "border-brand bg-brand/5"
+                )}
+              >
+                <RadioGroupItem value="practice" id="mode-practice" className="mt-1" />
+                <Label htmlFor="mode-practice" className="flex flex-col items-start gap-1 font-normal">
+                  <span className="text-base font-medium text-foreground">
+                    Practice mode
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Submit each question for immediate feedback and explanations. No
+                    timer pressure.
+                  </span>
+                </Label>
+              </div>
+              <div
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-4",
+                  mode === "exam" && "border-brand bg-brand/5"
+                )}
+              >
+                <RadioGroupItem value="exam" id="mode-exam" className="mt-1" />
+                <Label htmlFor="mode-exam" className="flex flex-col items-start gap-1 font-normal">
+                  <span className="text-base font-medium text-foreground">Exam mode</span>
+                  <span className="text-sm text-muted-foreground">
+                    Submit at the end only, {EXAM_DURATION_MINUTES}-minute countdown, no
+                    per-question feedback — like the real thing.
+                  </span>
+                </Label>
+              </div>
+            </RadioGroup>
           </CardContent>
           <CardFooter>
-            <Button
-              onClick={() => {
-                setIndex(0)
-                setSelected([])
-                setSubmitted(false)
-                setShowDetailed(false)
-                setCorrectCount(0)
-                setFinished(false)
-                setDomainStats({})
-                setSaveState("idle")
-              }}
-            >
-              Restart
+            <Button onClick={startExam} className="w-full">
+              Start {mode === "exam" ? "exam" : "practice"}
             </Button>
           </CardFooter>
         </Card>
+      </div>
+    )
+  }
+
+  // ---------- Review screen ----------
+  if (phase === "review") {
+    const reviewQuestions = questions.map((q, i) => ({
+      index: i,
+      text: q.text,
+      answered: getAnswerState(q.id).selected.length > 0,
+      flagged: flagged.has(q.id),
+    }))
+
+    return (
+      <>
+        {signInBanner}
+        <PracticeExamReview
+          questions={reviewQuestions}
+          onJump={(i) => {
+            goToIndex(i)
+            setPhase("in-progress")
+          }}
+          onSubmit={finalizeExam}
+        />
       </>
     )
   }
 
-  const question = questions[index]
+  // ---------- Summary screen ----------
+  if (phase === "summary") {
+    return (
+      <>
+        {signInBanner}
+        {isSignedIn && saveState === "error" && (
+          <p className="mb-4 text-sm text-destructive">
+            Couldn&apos;t save this attempt — your score below is still accurate.
+          </p>
+        )}
+        <PracticeExamSummary
+          correctCount={finalCorrect}
+          totalCount={questions.length}
+          passingScore={passingScore}
+          brandColor={brandColor}
+          domainStats={finalDomainStats}
+          elapsedSeconds={elapsedSeconds}
+          missedQuestions={finalMissed}
+          onRetake={handleRetake}
+        />
+      </>
+    )
+  }
+
+  // ---------- In-progress screen ----------
+  const question = questions[currentIndex]
   const isMultiSelect = question.correctAnswers.length > 1
-  const isCorrect = sameSet(selected, question.correctAnswers)
-  const isLast = index === questions.length - 1
-
-  function toggleOption(option: string) {
-    if (submitted) return
-    if (isMultiSelect) {
-      setSelected((current) =>
-        current.includes(option)
-          ? current.filter((o) => o !== option)
-          : [...current, option]
-      )
-    } else {
-      setSelected([option])
-    }
-  }
-
-  function handleSubmit() {
-    if (selected.length === 0) return
-    setSubmitted(true)
-    const correct = sameSet(selected, question.correctAnswers)
-    if (correct) {
-      setCorrectCount((c) => c + 1)
-    }
-    setDomainStats((current) => {
-      const existing = current[question.domain] ?? { correct: 0, total: 0 }
-      return {
-        ...current,
-        [question.domain]: {
-          correct: existing.correct + (correct ? 1 : 0),
-          total: existing.total + 1,
-        },
-      }
-    })
-  }
-
-  function handleNext() {
-    if (isLast) {
-      setFinished(true)
-      if (isSignedIn) {
-        void persistAttempt(correctCount)
-      }
-      return
-    }
-    setIndex((i) => i + 1)
-    setSelected([])
-    setSubmitted(false)
-    setShowDetailed(false)
-  }
+  const answerState = getAnswerState(question.id)
+  const isCorrect = sameSet(answerState.selected, question.correctAnswers)
+  const showFeedback = mode === "practice" && answerState.submitted
+  const statuses: NavigatorQuestionStatus[] = questions.map((q) => ({
+    answered: getAnswerState(q.id).selected.length > 0,
+    flagged: flagged.has(q.id),
+  }))
 
   return (
     <>
       {signInBanner}
-      <Card>
-      <CardHeader>
-        <p className="text-sm text-muted-foreground">
-          Question {index + 1} of {questions.length} · {question.domain}
-          {isMultiSelect && ` · Choose ${question.correctAnswers.length}`}
-        </p>
-        <CardTitle className="text-xl leading-relaxed font-normal md:text-2xl">
-          {question.text}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {isMultiSelect ? (
-          <div className="grid w-full gap-2">
-            {question.options.map((option) => {
-              const isSelected = selected.includes(option)
-              const isRight = question.correctAnswers.includes(option)
+      <PracticeExamHeader
+        certName={certName}
+        current={currentIndex + 1}
+        total={questions.length}
+        domain={question.domain}
+        timerLabel={
+          mode === "exam" ? formatClock(remainingSeconds) : formatClock(elapsedSeconds)
+        }
+        isOverTime={isOverTime}
+        isFlagged={flagged.has(question.id)}
+        onToggleFlag={() => toggleFlag(question.id)}
+        shortcutsOpen={shortcutsOpen}
+        onShortcutsOpenChange={setShortcutsOpen}
+      />
 
-              return (
-                <div
-                  key={option}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md border p-2",
-                    submitted && isRight && "border-green-600 bg-green-50 dark:bg-green-950",
-                    submitted && isSelected && !isRight && "border-red-600 bg-red-50 dark:bg-red-950"
-                  )}
-                >
-                  <Checkbox
-                    id={option}
-                    checked={isSelected}
-                    onCheckedChange={() => toggleOption(option)}
-                    disabled={submitted}
-                  />
-                  <Label htmlFor={option} className="flex-1 text-base font-normal md:text-lg">
-                    {option}
-                  </Label>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <RadioGroup
-            value={selected[0] ?? undefined}
-            onValueChange={(value) => toggleOption(value as string)}
-            disabled={submitted}
-          >
-            {question.options.map((option) => {
-              const isSelected = selected.includes(option)
-              const isRight = question.correctAnswers.includes(option)
-
-              return (
-                <div
-                  key={option}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md border p-2",
-                    submitted && isRight && "border-green-600 bg-green-50 dark:bg-green-950",
-                    submitted && isSelected && !isRight && "border-red-600 bg-red-50 dark:bg-red-950"
-                  )}
-                >
-                  <RadioGroupItem value={option} id={option} />
-                  <Label htmlFor={option} className="flex-1 text-base font-normal md:text-lg">
-                    {option}
-                  </Label>
-                </div>
-              )
-            })}
-          </RadioGroup>
-        )}
-
-        {submitted && (
-          <div className="rounded-md bg-muted p-3 text-base leading-relaxed">
-            <p className="font-medium">
-              {isCorrect ? "Correct!" : "Incorrect."}
-            </p>
-            <p className="mt-1 text-muted-foreground">{question.explanation}</p>
-
-            {!showDetailed ? (
-              <Button
-                variant="link"
-                className="mt-2 h-auto p-0"
-                onClick={() => setShowDetailed(true)}
-              >
-                Show detailed explanation
-              </Button>
-            ) : (
-              <p className="mt-2 text-muted-foreground">
-                {question.detailedExplanation}
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_240px]">
+        <div className="order-2 lg:order-1">
+          <Card>
+            <CardHeader>
+              <p className="text-xl leading-relaxed font-normal md:text-2xl">
+                {question.text}
               </p>
-            )}
-          </div>
-        )}
-      </CardContent>
-      <CardFooter className="justify-end gap-2">
-        {!submitted ? (
-          <Button onClick={handleSubmit} disabled={selected.length === 0}>
-            Submit
-          </Button>
-        ) : (
-          <Button onClick={handleNext}>
-            {isLast ? "Finish" : "Next question"}
-          </Button>
-        )}
-      </CardFooter>
-      </Card>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {isMultiSelect ? (
+                <div className="grid w-full gap-2">
+                  {question.options.map((option) => {
+                    const isSelected = answerState.selected.includes(option)
+                    const isRight = question.correctAnswers.includes(option)
+
+                    return (
+                      <div
+                        key={option}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md border p-5",
+                          showFeedback &&
+                            isRight &&
+                            "border-green-600 bg-green-50 dark:bg-green-950",
+                          showFeedback &&
+                            isSelected &&
+                            !isRight &&
+                            "border-red-600 bg-red-50 dark:bg-red-950"
+                        )}
+                      >
+                        <Checkbox
+                          id={option}
+                          checked={isSelected}
+                          onCheckedChange={() => toggleOption(option)}
+                          disabled={showFeedback}
+                        />
+                        <Label
+                          htmlFor={option}
+                          className="flex-1 text-base font-normal md:text-lg"
+                        >
+                          {option}
+                        </Label>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <RadioGroup
+                  value={answerState.selected[0] ?? undefined}
+                  onValueChange={(value) => toggleOption(value as string)}
+                  disabled={showFeedback}
+                >
+                  {question.options.map((option) => {
+                    const isSelected = answerState.selected.includes(option)
+                    const isRight = question.correctAnswers.includes(option)
+
+                    return (
+                      <div
+                        key={option}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md border p-5",
+                          showFeedback &&
+                            isRight &&
+                            "border-green-600 bg-green-50 dark:bg-green-950",
+                          showFeedback &&
+                            isSelected &&
+                            !isRight &&
+                            "border-red-600 bg-red-50 dark:bg-red-950"
+                        )}
+                      >
+                        <RadioGroupItem value={option} id={option} />
+                        <Label
+                          htmlFor={option}
+                          className="flex-1 text-base font-normal md:text-lg"
+                        >
+                          {option}
+                        </Label>
+                      </div>
+                    )
+                  })}
+                </RadioGroup>
+              )}
+
+              {showFeedback && (
+                <div className="rounded-md bg-muted p-3 text-base leading-relaxed">
+                  <p className="font-medium">{isCorrect ? "Correct!" : "Incorrect."}</p>
+                  <p className="mt-1 text-muted-foreground">{question.explanation}</p>
+
+                  {!answerState.showDetailed ? (
+                    <Button
+                      variant="link"
+                      className="mt-2 h-auto p-0"
+                      onClick={handleToggleDetailed}
+                    >
+                      Show detailed explanation
+                    </Button>
+                  ) : (
+                    <p className="mt-2 text-muted-foreground">
+                      {question.detailedExplanation}
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="justify-between gap-2">
+              <Button
+                variant="outline"
+                onClick={() => goToIndex(currentIndex - 1)}
+                disabled={currentIndex === 0}
+              >
+                Previous
+              </Button>
+              <div className="flex gap-2">
+                {mode === "practice" && !answerState.submitted && (
+                  <Button
+                    onClick={handleSubmitAnswer}
+                    disabled={answerState.selected.length === 0}
+                  >
+                    Submit answer
+                  </Button>
+                )}
+                {mode === "exam" && (
+                  <Button variant="outline" disabled={answerState.selected.length === 0}>
+                    Save
+                  </Button>
+                )}
+                <Button
+                  onClick={() => goToIndex(currentIndex + 1)}
+                  disabled={currentIndex === questions.length - 1}
+                >
+                  Next
+                </Button>
+              </div>
+            </CardFooter>
+          </Card>
+        </div>
+
+        <div className="order-1 lg:order-2">
+          <PracticeExamNavigator
+            statuses={statuses}
+            currentIndex={currentIndex}
+            onJump={goToIndex}
+            onFinish={handleFinishExam}
+          />
+        </div>
+      </div>
     </>
   )
 }
