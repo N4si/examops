@@ -7,11 +7,12 @@ try {
 import { writeFileSync } from "fs"
 import { GoogleGenAI } from "@google/genai"
 
-import { PrismaClient } from "@prisma/client"
+import { PrismaClient, type Certification } from "@prisma/client"
 import { buildSystemPrompt, getDomainConcepts, buildUserPrompt } from "./prompts"
 import { formatAnswerDistribution, validateBatch } from "./validate"
 import { extractSourceConcepts, readSourceFile, wordCount } from "./source"
 import { buildSummaryMarkdown, computeOverlapWarnings, type GenerationSummary } from "./summary"
+import { computeDomainPlan, type DomainPlanItem } from "./cert-plan"
 
 const MODEL = "gemini-flash-latest"
 
@@ -27,45 +28,81 @@ const TERSE_CONCEPT_WORD_THRESHOLD = 4
 type Args = {
   cert: string
   set: number
-  domain: string
-  count: number
+  domain?: string
+  count?: number
   out?: string
   source?: string
+  dryRun: boolean
 }
+
+const BOOLEAN_FLAGS = new Set(["dry-run"])
 
 function parseArgs(argv: string[]): Args {
   const flags: Record<string, string> = {}
+  let dryRun = false
+
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2)
-      const value = argv[i + 1]
-      flags[key] = value
-      i++
+    if (!arg.startsWith("--")) continue
+    const key = arg.slice(2)
+    if (BOOLEAN_FLAGS.has(key)) {
+      if (key === "dry-run") dryRun = true
+      continue
     }
+    flags[key] = argv[i + 1]
+    i++
   }
 
-  const missing = ["cert", "set", "domain", "count"].filter((k) => !flags[k])
+  const missing = ["cert", "set"].filter((k) => !flags[k])
   if (missing.length > 0) {
     console.error(
       `Missing required argument(s): ${missing.map((m) => `--${m}`).join(", ")}\n\n` +
-        `Usage:\n  tsx scripts/generate-questions/generate.ts --cert <slug> --set <number> --domain "<name>" --count <n> [--out <path>] [--source <path>]`
+        `Usage:\n` +
+        `  Single domain:   tsx scripts/generate-questions/generate.ts --cert <slug> --set <number> --domain "<name>" --count <n> [--out <path>] [--source <path>]\n` +
+        `  Cert-driven all domains: tsx scripts/generate-questions/generate.ts --cert <slug> --set <number> [--dry-run]`
     )
     process.exit(1)
   }
 
   const set = Number(flags.set)
-  const count = Number(flags.count)
   if (!Number.isInteger(set) || set < 1) {
     console.error(`--set must be a positive integer, got "${flags.set}"`)
     process.exit(1)
   }
-  if (!Number.isInteger(count) || count < 1) {
-    console.error(`--count must be a positive integer, got "${flags.count}"`)
+
+  const hasDomain = Boolean(flags.domain)
+  const hasCount = Boolean(flags.count)
+  if (hasDomain !== hasCount) {
+    console.error(
+      "--domain and --count must be provided together (single-domain mode), or both omitted " +
+        "to auto-generate every domain for this cert from its domainWeights (cert-driven mode)."
+    )
     process.exit(1)
   }
 
-  return { cert: flags.cert, set, domain: flags.domain, count, out: flags.out, source: flags.source }
+  let count: number | undefined
+  if (hasCount) {
+    count = Number(flags.count)
+    if (!Number.isInteger(count) || count < 1) {
+      console.error(`--count must be a positive integer, got "${flags.count}"`)
+      process.exit(1)
+    }
+  }
+
+  if (flags.source && hasDomain === false) {
+    console.error("--source is only supported in single-domain mode (requires --domain and --count).")
+    process.exit(1)
+  }
+
+  return {
+    cert: flags.cert,
+    set,
+    domain: flags.domain,
+    count,
+    out: flags.out,
+    source: flags.source,
+    dryRun,
+  }
 }
 
 function slugify(text: string): string {
@@ -165,47 +202,31 @@ function conceptCoveredBySource(domainConcept: string, sourceConcepts: string[])
   })
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2))
+async function generateOneDomain({
+  ai,
+  cert,
+  certSlug,
+  set,
+  domain,
+  count,
+  source,
+  out,
+  existingQuestionTexts,
+}: {
+  ai: GoogleGenAI
+  cert: Certification
+  certSlug: string
+  set: number
+  domain: string
+  count: number
+  source?: string
+  out?: string
+  existingQuestionTexts: string[]
+}): Promise<void> {
+  const sourceText = source ? readSourceFile(source) : null
 
-  const apiKey = process.env.GOOGLE_API_KEY
-  if (!apiKey) {
-    console.error(
-      "GOOGLE_API_KEY is not set. Add it to .env (see .env.example) — get a free key at https://aistudio.google.com/apikey"
-    )
-    process.exit(1)
-  }
-
-  // --source is validated (extension, existence, non-empty) before any API
-  // calls or DB queries — fail fast, matching the pipeline's existing style.
-  const sourceText = args.source ? readSourceFile(args.source) : null
-
-  const prisma = new PrismaClient()
-
-  let existingQuestionTexts: string[]
-  let certName: string
-  try {
-    const cert = await prisma.certification.findUnique({ where: { slug: args.cert } })
-    if (!cert) {
-      console.error(`Unknown cert slug "${args.cert}" — no matching Certification row.`)
-      process.exit(1)
-    }
-    certName = cert.name
-    const existing = await prisma.question.findMany({
-      where: { certId: cert.id },
-      select: { text: true },
-    })
-    existingQuestionTexts = existing.map((q) => q.text)
-  } finally {
-    await prisma.$disconnect()
-  }
-
-  console.log(
-    `Generating ${args.count} question(s) for cert="${args.cert}" set=${args.set} domain="${args.domain}"...`
-  )
+  console.log(`\nGenerating ${count} question(s) for cert="${certSlug}" set=${set} domain="${domain}"...`)
   console.log(`Existing questions in bank (all sets, for dedup): ${existingQuestionTexts.length}`)
-
-  const ai = new GoogleGenAI({ apiKey })
 
   let combinedQuestions: unknown[]
   let totalInputTokens = 0
@@ -214,7 +235,7 @@ async function main() {
   let sourceDerivedCount = 0
 
   if (sourceText) {
-    console.log(`Reading source material from ${args.source}...`)
+    console.log(`Reading source material from ${source}...`)
     const sourceWordCount = wordCount(sourceText)
 
     const { extraction, inputTokens, outputTokens } = await extractSourceConcepts({
@@ -226,18 +247,14 @@ async function main() {
     totalOutputTokens += outputTokens
     console.log(`Source concepts extracted: ${extraction.concepts.length}`)
 
-    // Step 3: cover source concepts first, one question per concept, capped
-    // at --count.
-    const sourceConceptsUsed = extraction.concepts.slice(0, args.count)
+    const sourceConceptsUsed = extraction.concepts.slice(0, count)
     const sourceConceptsUnused = extraction.concepts.slice(sourceConceptsUsed.length)
-    const remainingAfterSource = args.count - sourceConceptsUsed.length
+    const remainingAfterSource = count - sourceConceptsUsed.length
 
-    // Step 4: gap-fill from the official domain objectives, skipping any
-    // already covered by the source material (case-insensitive substring).
-    const domainInfo = getDomainConcepts(args.cert, args.domain)
+    const domainInfo = getDomainConcepts(certSlug, domain)
     if (!domainInfo) {
       console.warn(
-        `No domain objectives configured for cert "${args.cert}" domain "${args.domain}" — proceeding with source-only generation (no gap-fill).`
+        `No domain objectives configured for cert "${certSlug}" domain "${domain}" — proceeding with source-only generation (no gap-fill).`
       )
     }
     const gapConceptsAvailable = domainInfo
@@ -249,14 +266,14 @@ async function main() {
     let sourceBatch: unknown[] = []
     if (sourceConceptsUsed.length > 0) {
       const userPrompt = buildUserPrompt({
-        domain: args.domain,
-        certSlug: args.cert,
-        certName,
+        domain,
+        certSlug,
+        certName: cert.name,
         count: sourceConceptsUsed.length,
         existingQuestionTexts,
         sourceConcepts: sourceConceptsUsed,
       })
-      const result = await generateBatch({ ai, userPrompt, certName })
+      const result = await generateBatch({ ai, userPrompt, certName: cert.name })
       sourceBatch = result.questions
       totalInputTokens += result.usage.inputTokens
       totalOutputTokens += result.usage.outputTokens
@@ -269,14 +286,14 @@ async function main() {
         .map((q) => q?.text)
         .filter((t): t is string => Boolean(t))
       const userPrompt = buildUserPrompt({
-        domain: args.domain,
-        certSlug: args.cert,
-        certName,
+        domain,
+        certSlug,
+        certName: cert.name,
         count: gapConceptsUsed.length,
         existingQuestionTexts: [...existingQuestionTexts, ...sourceBatchTexts],
         gapConcepts: gapConceptsUsed,
       })
-      const result = await generateBatch({ ai, userPrompt, certName })
+      const result = await generateBatch({ ai, userPrompt, certName: cert.name })
       gapBatch = result.questions
       totalInputTokens += result.usage.inputTokens
       totalOutputTokens += result.usage.outputTokens
@@ -295,10 +312,10 @@ async function main() {
       }))
 
     summary = {
-      domain: args.domain,
-      set: args.set,
-      count: args.count,
-      sourcePath: args.source as string,
+      domain,
+      set,
+      count,
+      sourcePath: source as string,
       sourceWordCount,
       sourceConceptsExtracted: extraction.concepts.length,
       questionsFromSource: sourceConceptsUsed.length,
@@ -315,15 +332,14 @@ async function main() {
       overlapWarnings,
     }
   } else {
-    // Without --source: current behavior, unchanged.
     const userPrompt = buildUserPrompt({
-      domain: args.domain,
-      certSlug: args.cert,
-      certName,
-      count: args.count,
+      domain,
+      certSlug,
+      certName: cert.name,
+      count,
       existingQuestionTexts,
     })
-    const result = await generateBatch({ ai, userPrompt, certName })
+    const result = await generateBatch({ ai, userPrompt, certName: cert.name })
     combinedQuestions = result.questions
     totalInputTokens += result.usage.inputTokens
     totalOutputTokens += result.usage.outputTokens
@@ -331,8 +347,8 @@ async function main() {
 
   const { errors, valid, distribution } = validateBatch({
     batch: combinedQuestions,
-    expectedCertSlug: args.cert,
-    expectedDomain: args.domain,
+    expectedCertSlug: certSlug,
+    expectedDomain: domain,
     existingQuestionTexts,
   })
 
@@ -349,11 +365,7 @@ async function main() {
     process.exit(1)
   }
 
-  // Without --source, valid.length must equal --count exactly (unchanged
-  // behavior). With --source, a shortfall vs --count is expected when source
-  // + domain objectives run out — that's reported in the summary, not an
-  // error — but valid.length must still equal what we actually asked for.
-  const expectedCount = summary ? summary.totalGenerated : args.count
+  const expectedCount = summary ? summary.totalGenerated : count
   if (valid.length !== expectedCount) {
     console.error(
       `Expected ${expectedCount} questions but got ${valid.length} after validation. No output file was written.`
@@ -362,9 +374,7 @@ async function main() {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
-  const outPath =
-    args.out ??
-    `scripts/generate-questions/output/${args.cert}-set${args.set}-${slugify(args.domain)}-${timestamp}.json`
+  const outPath = out ?? `scripts/generate-questions/output/${certSlug}-set${set}-${slugify(domain)}-${timestamp}.json`
 
   writeFileSync(outPath, JSON.stringify(valid, null, 2))
 
@@ -399,6 +409,87 @@ async function main() {
     `Estimated cost (paid-tier reference, actual cost on free tier is $0): $${estimatedCost.toFixed(4)}`
   )
   console.log(`Output written to: ${outPath}`)
+}
+
+function printPlan(args: Args, cert: Certification, plan: DomainPlanItem[]): void {
+  console.log(
+    `Plan for cert="${args.cert}" set=${args.set} (examQuestionCount=${cert.examQuestionCount}, examDurationMinutes=${cert.examDurationMinutes}):\n`
+  )
+  let total = 0
+  for (const { domain, count } of plan) {
+    console.log(`  ${domain}: ${count}`)
+    total += count
+  }
+  console.log(`  ---`)
+  console.log(`  Total: ${total}`)
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2))
+
+  const prisma = new PrismaClient()
+  let cert: Certification | null
+  let existingQuestionTexts: string[]
+  try {
+    cert = await prisma.certification.findUnique({ where: { slug: args.cert } })
+    if (!cert) {
+      console.error(`Unknown cert slug "${args.cert}" — no matching Certification row.`)
+      process.exit(1)
+    }
+    const existing = await prisma.question.findMany({
+      where: { certId: cert.id },
+      select: { text: true },
+    })
+    existingQuestionTexts = existing.map((q) => q.text)
+  } finally {
+    await prisma.$disconnect()
+  }
+
+  let plan: DomainPlanItem[]
+  if (args.domain && args.count) {
+    plan = [{ domain: args.domain, count: args.count }]
+  } else {
+    if (!cert.domainWeights) {
+      console.error(
+        `Certification "${args.cert}" has no domainWeights configured — pass --domain and --count explicitly, or add domainWeights to the Certification row.`
+      )
+      process.exit(1)
+    }
+    try {
+      plan = computeDomainPlan(cert.examQuestionCount, cert.domainWeights as Record<string, number>)
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err))
+      process.exit(1)
+    }
+  }
+
+  if (args.dryRun) {
+    printPlan(args, cert, plan)
+    return
+  }
+
+  const apiKey = process.env.GOOGLE_API_KEY
+  if (!apiKey) {
+    console.error(
+      "GOOGLE_API_KEY is not set. Add it to .env (see .env.example) — get a free key at https://aistudio.google.com/apikey"
+    )
+    process.exit(1)
+  }
+  const ai = new GoogleGenAI({ apiKey })
+
+  for (const { domain, count } of plan) {
+    await generateOneDomain({
+      ai,
+      cert,
+      certSlug: args.cert,
+      set: args.set,
+      domain,
+      count,
+      source: args.source,
+      out: plan.length === 1 ? args.out : undefined,
+      existingQuestionTexts,
+    })
+  }
 }
 
 main().catch((err) => {
