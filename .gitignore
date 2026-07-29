@@ -36,3 +36,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*
+
+# generated question batches — review before committing anything here
+scripts/generate-questions/output/*.json
