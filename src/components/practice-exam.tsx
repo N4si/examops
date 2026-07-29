@@ -56,6 +56,34 @@ function formatClock(totalSeconds: number) {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
+// Deterministic per-seed PRNG (mulberry32) — same seed always produces the
+// same shuffle, so a re-render mid-attempt doesn't reshuffle under the user.
+function mulberry32(seed: number) {
+  let state = seed | 0
+  return function random() {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function shuffle<T>(array: T[], random: () => number): T[] {
+  const result = [...array]
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1))
+    ;[result[i], result[j]] = [result[j], result[i]]
+  }
+  return result
+}
+
+// correctAnswers stores the answer text itself, not an option index, so
+// shuffling `options` never requires remapping correctAnswers.
+function shuffleForAttempt(source: PracticeQuestion[], seed: number): PracticeQuestion[] {
+  const random = mulberry32(seed)
+  return shuffle(source, random).map((q) => ({ ...q, options: shuffle(q.options, random) }))
+}
+
 export function PracticeExam({
   questions,
   certId,
@@ -75,6 +103,7 @@ export function PracticeExam({
 }) {
   const [phase, setPhase] = useState<Phase>("setup")
   const [mode, setMode] = useState<Mode>("practice")
+  const [activeQuestions, setActiveQuestions] = useState<PracticeQuestion[]>(questions)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({})
   const [flagged, setFlagged] = useState<Set<string>>(new Set())
@@ -101,7 +130,7 @@ export function PracticeExam({
     const domainMap: Record<string, { correct: number; total: number }> = {}
     const missed: MissedQuestion[] = []
 
-    for (const q of questions) {
+    for (const q of activeQuestions) {
       const selected = getAnswerState(q.id).selected
       const isCorrect = sameSet(selected, q.correctAnswers)
       if (isCorrect) {
@@ -131,9 +160,9 @@ export function PracticeExam({
       const result = await submitExamAttempt({
         certId,
         startedAt: examStartedAt.toISOString(),
-        score: finalCorrectCount / questions.length,
+        score: finalCorrectCount / activeQuestions.length,
         domainBreakdown,
-        questionsAnswered: questions.length,
+        questionsAnswered: activeQuestions.length,
       })
       setSaveState(result.saved ? "saved" : "idle")
     } catch {
@@ -181,17 +210,18 @@ export function PracticeExam({
   }, [remainingSeconds, mode, phase])
 
   function startExam() {
+    setActiveQuestions(shuffleForAttempt(questions, Date.now()))
     setExamStartedAt(new Date())
     setPhase("in-progress")
   }
 
   function goToIndex(index: number) {
-    if (index < 0 || index >= questions.length) return
+    if (index < 0 || index >= activeQuestions.length) return
     setCurrentIndex(index)
   }
 
   function toggleOption(option: string) {
-    const q = questions[currentIndex]
+    const q = activeQuestions[currentIndex]
     const isMultiSelect = q.correctAnswers.length > 1
     setAnswers((current) => {
       const existing = current[q.id] ?? { selected: [], submitted: false, showDetailed: false }
@@ -215,7 +245,7 @@ export function PracticeExam({
   }
 
   function handleSubmitAnswer() {
-    const q = questions[currentIndex]
+    const q = activeQuestions[currentIndex]
     setAnswers((current) => ({
       ...current,
       [q.id]: { ...getAnswerState(q.id), submitted: true },
@@ -223,7 +253,7 @@ export function PracticeExam({
   }
 
   function handleToggleDetailed() {
-    const q = questions[currentIndex]
+    const q = activeQuestions[currentIndex]
     setAnswers((current) => ({
       ...current,
       [q.id]: { ...getAnswerState(q.id), showDetailed: true },
@@ -231,8 +261,9 @@ export function PracticeExam({
   }
 
   function handleFinishExam() {
-    const unansweredCount = questions.filter((q) => getAnswerState(q.id).selected.length === 0)
-      .length
+    const unansweredCount = activeQuestions.filter(
+      (q) => getAnswerState(q.id).selected.length === 0
+    ).length
     if (mode === "exam" && unansweredCount > 0) {
       const proceed = window.confirm(
         `You have ${unansweredCount} unanswered question${unansweredCount === 1 ? "" : "s"}. Go to review anyway?`
@@ -245,6 +276,7 @@ export function PracticeExam({
   function handleRetake() {
     setPhase("setup")
     setMode("practice")
+    setActiveQuestions(questions)
     setCurrentIndex(0)
     setAnswers({})
     setFlagged(new Set())
@@ -261,7 +293,7 @@ export function PracticeExam({
       const target = e.target as HTMLElement | null
       if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return
 
-      const q = questions[currentIndex]
+      const q = activeQuestions[currentIndex]
       if (e.key >= "1" && e.key <= "9") {
         const idx = Number(e.key) - 1
         if (idx < q.options.length) toggleOption(q.options[idx])
@@ -279,7 +311,7 @@ export function PracticeExam({
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, currentIndex, questions])
+  }, [phase, currentIndex, activeQuestions])
 
   if (questions.length === 0) {
     return (
@@ -364,7 +396,7 @@ export function PracticeExam({
 
   // ---------- Review screen ----------
   if (phase === "review") {
-    const reviewQuestions = questions.map((q, i) => ({
+    const reviewQuestions = activeQuestions.map((q, i) => ({
       index: i,
       text: q.text,
       answered: getAnswerState(q.id).selected.length > 0,
@@ -398,7 +430,7 @@ export function PracticeExam({
         )}
         <PracticeExamSummary
           correctCount={finalCorrect}
-          totalCount={questions.length}
+          totalCount={activeQuestions.length}
           passingScore={passingScore}
           brandColor={brandColor}
           domainStats={finalDomainStats}
@@ -411,12 +443,12 @@ export function PracticeExam({
   }
 
   // ---------- In-progress screen ----------
-  const question = questions[currentIndex]
+  const question = activeQuestions[currentIndex]
   const isMultiSelect = question.correctAnswers.length > 1
   const answerState = getAnswerState(question.id)
   const isCorrect = sameSet(answerState.selected, question.correctAnswers)
   const showFeedback = mode === "practice" && answerState.submitted
-  const statuses: NavigatorQuestionStatus[] = questions.map((q) => ({
+  const statuses: NavigatorQuestionStatus[] = activeQuestions.map((q) => ({
     answered: getAnswerState(q.id).selected.length > 0,
     flagged: flagged.has(q.id),
   }))
@@ -427,7 +459,7 @@ export function PracticeExam({
       <PracticeExamHeader
         certName={certName}
         current={currentIndex + 1}
-        total={questions.length}
+        total={activeQuestions.length}
         domain={question.domain}
         timerLabel={
           mode === "exam" ? formatClock(remainingSeconds) : formatClock(elapsedSeconds)
@@ -566,7 +598,7 @@ export function PracticeExam({
                 )}
                 <Button
                   onClick={() => goToIndex(currentIndex + 1)}
-                  disabled={currentIndex === questions.length - 1}
+                  disabled={currentIndex === activeQuestions.length - 1}
                 >
                   Next
                 </Button>
