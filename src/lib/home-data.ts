@@ -92,6 +92,16 @@ export type DashboardData = {
   nextRecommendation: string
 }
 
+export type SampleQuestion = {
+  domain: string
+  text: string
+  options: string[]
+  correctAnswers: number[]
+  explanation: string
+  detailedExplanation: string | null
+  certSlug: string
+}
+
 export type HomeData = {
   vendors: string[]
   certs: CertView[]
@@ -99,6 +109,7 @@ export type HomeData = {
   learningPaths: LearningPath[]
   resources: ResourceCategory[]
   dashboard: DashboardData
+  sampleQuestion: SampleQuestion | null
   totals: { certs: number; questions: number; sets: number }
 }
 
@@ -153,6 +164,7 @@ async function fetchHomeData(vendor?: string): Promise<HomeData> {
     flashcardCount,
     allVendorsRows,
     certRows,
+    sampleRow,
   ] = await Promise.all([
     prisma.certification.count(),
     prisma.question.count(),
@@ -449,5 +461,203 @@ function buildDashboard(certs: CertView[], questionCount: number): DashboardData
       { domain: "Billing & Pricing", score: 68 },
     ],
     nextRecommendation: "Retake the Security & Compliance diagnostic",
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Curated fallback — used only when the datapack/DB is unreachable so the
+// marketing homepage always renders. Every value is flagged live:false.
+// ---------------------------------------------------------------------------
+
+type Seed = {
+  slug: string
+  vendor: string
+  name: string
+  logoSlug: string
+  brandColor: string
+  description: string
+  questions: number
+  sets: number
+  notes: number
+  flashcards: number
+}
+
+const FALLBACK_SEEDS: Seed[] = [
+  {
+    slug: "aws-certified-cloud-practitioner-clf-c02",
+    vendor: "AWS",
+    name: "AWS Certified Cloud Practitioner (CLF-C02)",
+    logoSlug: "aws",
+    brandColor: "#FF9900",
+    description: "Entry-level validation of foundational AWS cloud fluency.",
+    questions: 65,
+    sets: 4,
+    notes: 12,
+    flashcards: 120,
+  },
+  {
+    slug: "aws-certified-solutions-architect-associate-saa-c03",
+    vendor: "AWS",
+    name: "AWS Certified Solutions Architect Associate (SAA-C03)",
+    logoSlug: "aws",
+    brandColor: "#FF9900",
+    description: "Design resilient, cost-optimized architectures on AWS.",
+    questions: 65,
+    sets: 6,
+    notes: 18,
+    flashcards: 180,
+  },
+  {
+    slug: "microsoft-azure-fundamentals-az-900",
+    vendor: "Azure",
+    name: "Microsoft Azure Fundamentals (AZ-900)",
+    logoSlug: "azure",
+    brandColor: "#0078D4",
+    description: "Core Azure concepts, services, pricing and governance.",
+    questions: 55,
+    sets: 3,
+    notes: 10,
+    flashcards: 110,
+  },
+  {
+    slug: "microsoft-azure-administrator-az-104",
+    vendor: "Azure",
+    name: "Microsoft Azure Administrator (AZ-104)",
+    logoSlug: "azure",
+    brandColor: "#0078D4",
+    description: "Implement, manage and monitor Azure environments.",
+    questions: 60,
+    sets: 5,
+    notes: 16,
+    flashcards: 150,
+  },
+  {
+    slug: "google-associate-cloud-engineer",
+    vendor: "GCP",
+    name: "Google Associate Cloud Engineer",
+    logoSlug: "gcp",
+    brandColor: "#4285F4",
+    description: "Deploy and operate applications on Google Cloud.",
+    questions: 50,
+    sets: 4,
+    notes: 14,
+    flashcards: 130,
+  },
+  {
+    slug: "certified-kubernetes-administrator-cka",
+    vendor: "Kubernetes",
+    name: "Certified Kubernetes Administrator (CKA)",
+    logoSlug: "kubernetes",
+    brandColor: "#326CE5",
+    description: "Hands-on cluster administration and troubleshooting.",
+    questions: 45,
+    sets: 3,
+    notes: 15,
+    flashcards: 100,
+  },
+  {
+    slug: "hashicorp-certified-terraform-associate",
+    vendor: "Terraform",
+    name: "HashiCorp Certified Terraform Associate (003)",
+    logoSlug: "terraform",
+    brandColor: "#7B42BC",
+    description: "Infrastructure as code fundamentals with Terraform.",
+    questions: 57,
+    sets: 4,
+    notes: 11,
+    flashcards: 90,
+  },
+  {
+    slug: "docker-certified-associate",
+    vendor: "Docker",
+    name: "Docker Certified Associate (DCA)",
+    logoSlug: "docker",
+    brandColor: "#2496ED",
+    description: "Containerize, ship and run applications with Docker.",
+    questions: 40,
+    sets: 3,
+    notes: 9,
+    flashcards: 85,
+  },
+  {
+    slug: "github-actions-certification",
+    vendor: "GitHub",
+    name: "GitHub Actions Certification",
+    logoSlug: "github",
+    brandColor: "#181717",
+    description: "Automate CI/CD workflows with GitHub Actions.",
+    questions: 35,
+    sets: 2,
+    notes: 8,
+    flashcards: 70,
+  },
+]
+
+function buildFallbackHome(): HomeData {
+  const certs: CertView[] = FALLBACK_SEEDS.map((s, i) => {
+    const level = deriveLevel(s.name, s.slug)
+    const counts = {
+      questions: s.questions,
+      practiceSets: s.sets,
+      flashcards: s.flashcards,
+      studyNotes: s.notes,
+      resources: 4,
+    }
+    const readiness = Math.min(
+      1,
+      counts.questions / 60 + (counts.practiceSets > 0 ? 0.15 : 0) + counts.studyNotes / 12
+    )
+    return {
+      id: `fallback-${i}`,
+      slug: s.slug,
+      href: `/certs/${s.slug}`,
+      vendor: s.vendor,
+      name: s.name,
+      shortName: shorten(s.name),
+      examCode: deriveExamCode(s.name, s.slug),
+      description: s.description,
+      logoSlug: s.logoSlug,
+      brandColor: s.brandColor,
+      level,
+      studyHours: STUDY_HOURS[level],
+      passingScore: 70,
+      examDurationMinutes: 90,
+      counts,
+      hasContent: true,
+      readiness,
+    }
+  })
+
+  const questionCount = FALLBACK_SEEDS.reduce((n, s) => n + s.questions, 0)
+  const setCount = FALLBACK_SEEDS.reduce((n, s) => n + s.sets, 0)
+  const noteCount = FALLBACK_SEEDS.reduce((n, s) => n + s.notes, 0)
+  const flashcardCount = FALLBACK_SEEDS.reduce((n, s) => n + s.flashcards, 0)
+
+  const vendors = [
+    "All",
+    ...Array.from(new Set(FALLBACK_SEEDS.map((s) => s.vendor))),
+    "Linux",
+    "Security",
+    "AI",
+  ]
+
+  const stats: StatItem[] = [
+    { label: "Certifications", value: certs.length, live: false },
+    { label: "Practice questions", value: questionCount, live: false },
+    { label: "Study notes", value: noteCount, live: false },
+    { label: "Flashcards", value: flashcardCount, live: false },
+    { label: "Learning paths", value: 8, live: false },
+    { label: "Hands-on labs", value: 120, live: false },
+    { label: "Developers learning", value: 48000, suffix: "+", live: false },
+  ]
+
+  return {
+    vendors,
+    certs,
+    stats,
+    learningPaths: buildLearningPaths(certs),
+    resources: buildResources({ noteCount, questionCount, flashcardCount, setCount }),
+    dashboard: buildDashboard(certs, questionCount),
+    totals: { certs: certs.length, questions: questionCount, sets: setCount },
   }
 }
