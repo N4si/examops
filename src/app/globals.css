@@ -39,8 +39,13 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* Marketing accent — Tailwind indigo-500. Swap this one value to rebrand. */
-  --brand: oklch(0.585 0.233 277.117);
+  /* Marketing accent — ExamOps violet. Swap this one value to rebrand. */
+  --brand: oklch(0.541 0.245 293.009);
+  --brand-foreground: oklch(0.985 0 0);
+  /* Supporting accents (constant across themes) */
+  --accent-blue: oklch(0.546 0.215 262.881);
+  --accent-cyan: oklch(0.715 0.129 215.221);
+  --success: oklch(0.723 0.192 149.579);
 }
 
 .dark {
@@ -75,6 +80,13 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Brand accents — slightly brighter in dark for glow legibility */
+  --brand: oklch(0.606 0.25 292.717);
+  --brand-foreground: oklch(0.985 0 0);
+  --accent-blue: oklch(0.623 0.214 259.815);
+  --accent-cyan: oklch(0.789 0.154 211.53);
+  --success: oklch(0.792 0.209 151.711);
 }
 
 @theme inline {
@@ -114,6 +126,10 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-success: var(--success);
 }
 
 @layer utilities {
