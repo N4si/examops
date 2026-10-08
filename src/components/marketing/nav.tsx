@@ -7,8 +7,8 @@ import { auth, signOutAction } from "@/lib/auth"
 
 const LINKS = [
   { label: "Certifications", href: "#certifications" },
+  { label: "Roadmaps", href: "/roadmaps" },
   { label: "Pricing", href: "/pricing" },
-  { label: "Resources", href: "#" },
 ]
 
 export async function MarketingNav() {

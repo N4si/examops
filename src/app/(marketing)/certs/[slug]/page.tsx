@@ -103,6 +103,14 @@ export default async function CertDetailPage({
         {cert.description && (
           <p className="mt-3 max-w-2xl text-muted-foreground">{cert.description}</p>
         )}
+        {cert.practiceSets.some((s) => s._count.questions > 0) && (
+          <Link
+            href={`/certs/${cert.slug}/roadmap`}
+            className="mt-4 inline-block text-sm font-medium text-brand hover:underline"
+          >
+            View learning roadmap →
+          </Link>
+        )}
         </div>
       </section>
 
