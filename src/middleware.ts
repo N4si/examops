@@ -1,28 +1,27 @@
 import { NextRequest, NextResponse } from "next/server"
 
-const PUBLIC_PATHS = new Set(["/admin/login", "/api/admin/login"])
+const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"]
 
-// /dashboard/* auth is enforced in src/app/dashboard/layout.tsx (a Server
-// Component, running in the Node.js runtime) instead of here. Auth.js is
-// configured with `session: { strategy: "database" }`, which needs a real
-// Prisma/Postgres connection on every check — that works in middleware under
-// `next dev`/`next start` (not a true sandboxed runtime), but Vercel's actual
-// Edge Network runs middleware in a V8 isolate that can't open raw TCP, so a
-// Prisma call here would break in that specific deployment target. Keeping
-// this file admin-only (a plain cookie-string comparison, no DB call) keeps
-// it edge-safe everywhere.
+// Admin access is checked in two layers:
+//
+// 1. Here (edge-safe, no DB): requests to /admin/* or /api/admin/* without an
+//    Auth.js session cookie are turned away early — pages redirect to /login,
+//    API routes get 401. Presence of the cookie proves nothing on its own.
+// 2. In the Node.js runtime: every admin page calls requireAdminPage() and
+//    every admin API handler calls requireAdminApi() (src/lib/admin-auth.ts),
+//    which validate the session against the database and check ADMIN_EMAILS
+//    plus a Google account. That is the real authorization check.
+//
+// Auth.js uses `session: { strategy: "database" }`, so validating a session
+// needs Prisma/Postgres. Vercel runs middleware in a V8 isolate that can't
+// open raw TCP, so no Prisma call belongs in this file.
+//
+// /dashboard/* auth is enforced separately in src/app/dashboard/layout.tsx.
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname, search } = request.nextUrl
 
-  if (PUBLIC_PATHS.has(pathname)) {
-    return NextResponse.next()
-  }
-
-  const session = request.cookies.get("admin_session")?.value
-  const adminPassword = process.env.ADMIN_PASSWORD
-  const isAuthorized = Boolean(adminPassword) && session === adminPassword
-
-  if (isAuthorized) {
+  const hasSessionCookie = SESSION_COOKIES.some((name) => request.cookies.has(name))
+  if (hasSessionCookie) {
     return NextResponse.next()
   }
 
@@ -30,7 +29,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const loginUrl = new URL("/admin/login", request.url)
+  const loginUrl = new URL("/login", request.url)
+  loginUrl.searchParams.set("callbackUrl", pathname + search)
   return NextResponse.redirect(loginUrl)
 }
 

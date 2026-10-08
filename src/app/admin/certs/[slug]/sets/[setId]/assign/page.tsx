@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 
 import { AssignQuestionsForm } from "@/components/admin/assign-questions-form"
+import { requireAdminPage } from "@/lib/admin-auth"
 import { prisma } from "@/lib/prisma"
 
 export default async function AssignQuestionsPage({
@@ -8,6 +9,7 @@ export default async function AssignQuestionsPage({
 }: {
   params: { slug: string; setId: string }
 }) {
+  await requireAdminPage()
   const set = await prisma.practiceSet.findUnique({
     where: { id: params.setId },
     include: { cert: true },

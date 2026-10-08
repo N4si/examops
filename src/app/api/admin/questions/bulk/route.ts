@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 
+import { requireAdminApi } from "@/lib/admin-auth"
 import { prisma } from "@/lib/prisma"
 import { bulkQuestionInputSchema } from "@/lib/admin-schemas"
 
 export async function POST(request: NextRequest) {
+  const denied = await requireAdminApi()
+  if (denied) return denied
+
   const body = await request.json().catch(() => null)
   const parsed = bulkQuestionInputSchema.safeParse(body)
 

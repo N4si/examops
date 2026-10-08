@@ -2,8 +2,11 @@ import type { ReactNode } from "react"
 import Link from "next/link"
 
 import { ThemeToggle } from "@/components/theme-toggle"
+import { requireAdminPage } from "@/lib/admin-auth"
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  await requireAdminPage()
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="border-b border-border">
