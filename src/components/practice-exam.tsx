@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { FileQuestion } from "lucide-react"
 
-import { submitExamAttempt } from "@/app/actions/exam"
+import { checkPracticeAnswer, submitExamAttempt } from "@/app/actions/exam"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -27,6 +27,7 @@ import {
   type MissedQuestion,
 } from "@/components/practice-exam-summary"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import type { PracticeFeedback } from "@/lib/exam-grading"
 import { cn } from "@/lib/utils"
 
 export type PracticeQuestion = {
@@ -34,20 +35,14 @@ export type PracticeQuestion = {
   domain: string
   text: string
   options: string[]
-  correctAnswers: string[]
-  explanation: string
-  detailedExplanation: string
+  // Only whether to render checkboxes vs radios — correct answers and
+  // explanations are fetched from the server after the user submits.
+  multiSelect: boolean
 }
 
 type AnswerState = { selected: string[]; submitted: boolean; showDetailed: boolean }
 type Mode = "practice" | "exam"
 type Phase = "setup" | "in-progress" | "review" | "summary"
-
-function sameSet(a: string[], b: string[]) {
-  if (a.length !== b.length) return false
-  const bSet = new Set(b)
-  return a.every((item) => bSet.has(item))
-}
 
 function formatClock(totalSeconds: number) {
   const clamped = Math.max(0, totalSeconds)
@@ -77,8 +72,8 @@ function shuffle<T>(array: T[], random: () => number): T[] {
   return result
 }
 
-// correctAnswers stores the answer text itself, not an option index, so
-// shuffling `options` never requires remapping correctAnswers.
+// Answers are submitted as option text, not an option index, so shuffling
+// `options` never requires remapping anything on the server.
 function shuffleForAttempt(source: PracticeQuestion[], seed: number): PracticeQuestion[] {
   const random = mulberry32(seed)
   return shuffle(source, random).map((q) => ({ ...q, options: shuffle(q.options, random) }))
@@ -86,7 +81,7 @@ function shuffleForAttempt(source: PracticeQuestion[], seed: number): PracticeQu
 
 export function PracticeExam({
   questions,
-  certId,
+  setId,
   certName,
   brandColor,
   passingScore,
@@ -94,7 +89,7 @@ export function PracticeExam({
   isSignedIn = false,
 }: {
   questions: PracticeQuestion[]
-  certId: string
+  setId: string
   certName: string
   brandColor: string
   passingScore: number | null
@@ -116,6 +111,15 @@ export function PracticeExam({
   const [finalCorrect, setFinalCorrect] = useState(0)
   const [finalDomainStats, setFinalDomainStats] = useState<DomainStat[]>([])
   const [finalMissed, setFinalMissed] = useState<MissedQuestion[]>([])
+  // Practice-mode feedback per question, filled in by the server on submit.
+  const [feedback, setFeedback] = useState<Record<string, PracticeFeedback>>({})
+  const [checkingAnswer, setCheckingAnswer] = useState(false)
+  const [checkError, setCheckError] = useState(false)
+  const [submittingExam, setSubmittingExam] = useState(false)
+  const [submitError, setSubmitError] = useState(false)
+  // Guards against a double submit (e.g. the auto-submit effect re-firing on
+  // every timer tick while the server request is in flight).
+  const submittingRef = useRef(false)
 
   const examDurationSeconds = examDurationMinutes * 60
   const remainingSeconds = examDurationSeconds - elapsedSeconds
@@ -125,69 +129,54 @@ export function PracticeExam({
     return answers[questionId] ?? { selected: [], submitted: false, showDetailed: false }
   }
 
-  function computeResults() {
-    let correct = 0
-    const domainMap: Record<string, { correct: number; total: number }> = {}
-    const missed: MissedQuestion[] = []
+  async function finalizeExam() {
+    if (submittingRef.current || !examStartedAt) return
+    submittingRef.current = true
+    setSubmittingExam(true)
+    setSubmitError(false)
 
+    const submittedAnswers: Record<string, string[]> = {}
     for (const q of activeQuestions) {
       const selected = getAnswerState(q.id).selected
-      const isCorrect = sameSet(selected, q.correctAnswers)
-      if (isCorrect) {
-        correct++
-      } else {
-        missed.push({
-          text: q.text,
-          options: q.options,
-          correctAnswers: q.correctAnswers,
-          explanation: q.explanation,
-          detailedExplanation: q.detailedExplanation,
-        })
-      }
-      const dm = domainMap[q.domain] ?? { correct: 0, total: 0 }
-      dm.total += 1
-      if (isCorrect) dm.correct += 1
-      domainMap[q.domain] = dm
+      if (selected.length > 0) submittedAnswers[q.id] = selected
     }
 
-    return { correct, domainMap, missed }
-  }
-
-  async function persistAttempt(finalCorrectCount: number, domainBreakdown: Record<string, number>) {
-    if (!examStartedAt) return
-    setSaveState("saving")
     try {
       const result = await submitExamAttempt({
-        certId,
+        setId,
         startedAt: examStartedAt.toISOString(),
-        score: finalCorrectCount / activeQuestions.length,
-        domainBreakdown,
-        questionsAnswered: activeQuestions.length,
+        answers: submittedAnswers,
       })
-      setSaveState(result.saved ? "saved" : "idle")
+      if (!result.ok) throw new Error(result.error)
+
+      // Keep the summary in this attempt's shuffled order, as before.
+      const position = new Map(activeQuestions.map((q, i) => [q.id, i]))
+      const domainOrder = Array.from(new Set(activeQuestions.map((q) => q.domain)))
+      const domainStats: DomainStat[] = [...result.domainStats].sort(
+        (a, b) => domainOrder.indexOf(a.domain) - domainOrder.indexOf(b.domain)
+      )
+      const missed: MissedQuestion[] = [...result.missed]
+        .sort((a, b) => (position.get(a.questionId) ?? 0) - (position.get(b.questionId) ?? 0))
+        .map((m) => ({
+          text: m.text,
+          options: activeQuestions[position.get(m.questionId) ?? -1]?.options ?? m.options,
+          correctAnswers: m.correctAnswers,
+          explanation: m.explanation,
+          detailedExplanation: m.detailedExplanation,
+        }))
+
+      setFinalCorrect(result.correctCount)
+      setFinalDomainStats(domainStats)
+      setFinalMissed(missed)
+      setSaveState(result.saved ? "saved" : isSignedIn ? "error" : "idle")
+      setPhase("summary")
     } catch {
-      setSaveState("error")
-    }
-  }
-
-  function finalizeExam() {
-    const { correct, domainMap, missed } = computeResults()
-    const domainStats: DomainStat[] = Object.entries(domainMap).map(([domain, stat]) => ({
-      domain,
-      correct: stat.correct,
-      total: stat.total,
-    }))
-    setFinalCorrect(correct)
-    setFinalDomainStats(domainStats)
-    setFinalMissed(missed)
-    setPhase("summary")
-
-    if (isSignedIn) {
-      const domainBreakdown: Record<string, number> = {}
-      for (const [domain, stat] of Object.entries(domainMap)) {
-        domainBreakdown[domain] = stat.total > 0 ? stat.correct / stat.total : 0
-      }
-      void persistAttempt(correct, domainBreakdown)
+      setSubmitError(true)
+      // Land on the review screen so the user can retry the submit manually.
+      setPhase("review")
+    } finally {
+      submittingRef.current = false
+      setSubmittingExam(false)
     }
   }
 
@@ -205,7 +194,7 @@ export function PracticeExam({
   useEffect(() => {
     if (mode !== "exam" || phase !== "in-progress") return
     if (remainingSeconds > 0) return
-    finalizeExam()
+    void finalizeExam()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remainingSeconds, mode, phase])
 
@@ -218,11 +207,12 @@ export function PracticeExam({
   function goToIndex(index: number) {
     if (index < 0 || index >= activeQuestions.length) return
     setCurrentIndex(index)
+    setCheckError(false)
   }
 
   function toggleOption(option: string) {
     const q = activeQuestions[currentIndex]
-    const isMultiSelect = q.correctAnswers.length > 1
+    const isMultiSelect = q.multiSelect
     setAnswers((current) => {
       const existing = current[q.id] ?? { selected: [], submitted: false, showDetailed: false }
       if (existing.submitted) return current
@@ -244,12 +234,35 @@ export function PracticeExam({
     })
   }
 
-  function handleSubmitAnswer() {
+  async function handleSubmitAnswer() {
     const q = activeQuestions[currentIndex]
-    setAnswers((current) => ({
-      ...current,
-      [q.id]: { ...getAnswerState(q.id), submitted: true },
-    }))
+    if (checkingAnswer) return
+    setCheckingAnswer(true)
+    setCheckError(false)
+    try {
+      const result = await checkPracticeAnswer({
+        questionId: q.id,
+        selected: getAnswerState(q.id).selected,
+      })
+      if (!result.ok) throw new Error(result.error)
+      setFeedback((current) => ({
+        ...current,
+        [q.id]: {
+          isCorrect: result.isCorrect,
+          correctAnswers: result.correctAnswers,
+          explanation: result.explanation,
+          detailedExplanation: result.detailedExplanation,
+        },
+      }))
+      setAnswers((current) => ({
+        ...current,
+        [q.id]: { ...(current[q.id] ?? { selected: [], showDetailed: false }), submitted: true },
+      }))
+    } catch {
+      setCheckError(true)
+    } finally {
+      setCheckingAnswer(false)
+    }
   }
 
   function handleToggleDetailed() {
@@ -283,6 +296,9 @@ export function PracticeExam({
     setExamStartedAt(null)
     setElapsedSeconds(0)
     setSaveState("idle")
+    setFeedback({})
+    setCheckError(false)
+    setSubmitError(false)
   }
 
   // Keyboard shortcuts: 1-4 select options, F flag, N/P navigate, ? shows help.
@@ -406,13 +422,19 @@ export function PracticeExam({
     return (
       <>
         {signInBanner}
+        {submitError && (
+          <p className="mb-4 text-sm text-destructive">
+            Couldn&apos;t submit your exam. Please try again.
+          </p>
+        )}
         <PracticeExamReview
           questions={reviewQuestions}
+          submitting={submittingExam}
           onJump={(i) => {
             goToIndex(i)
             setPhase("in-progress")
           }}
-          onSubmit={finalizeExam}
+          onSubmit={() => void finalizeExam()}
         />
       </>
     )
@@ -444,10 +466,11 @@ export function PracticeExam({
 
   // ---------- In-progress screen ----------
   const question = activeQuestions[currentIndex]
-  const isMultiSelect = question.correctAnswers.length > 1
+  const isMultiSelect = question.multiSelect
   const answerState = getAnswerState(question.id)
-  const isCorrect = sameSet(answerState.selected, question.correctAnswers)
-  const showFeedback = mode === "practice" && answerState.submitted
+  const questionFeedback = feedback[question.id]
+  const isCorrect = questionFeedback?.isCorrect ?? false
+  const showFeedback = mode === "practice" && answerState.submitted && Boolean(questionFeedback)
   const statuses: NavigatorQuestionStatus[] = activeQuestions.map((q) => ({
     answered: getAnswerState(q.id).selected.length > 0,
     flagged: flagged.has(q.id),
@@ -484,7 +507,7 @@ export function PracticeExam({
                 <div className="grid w-full gap-2">
                   {question.options.map((option) => {
                     const isSelected = answerState.selected.includes(option)
-                    const isRight = question.correctAnswers.includes(option)
+                    const isRight = questionFeedback?.correctAnswers.includes(option) ?? false
 
                     return (
                       <div
@@ -524,7 +547,7 @@ export function PracticeExam({
                 >
                   {question.options.map((option) => {
                     const isSelected = answerState.selected.includes(option)
-                    const isRight = question.correctAnswers.includes(option)
+                    const isRight = questionFeedback?.correctAnswers.includes(option) ?? false
 
                     return (
                       <div
@@ -556,7 +579,7 @@ export function PracticeExam({
               {showFeedback && (
                 <div className="rounded-md bg-muted p-3 text-base leading-relaxed">
                   <p className="font-medium">{isCorrect ? "Correct!" : "Incorrect."}</p>
-                  <p className="mt-1 text-muted-foreground">{question.explanation}</p>
+                  <p className="mt-1 text-muted-foreground">{questionFeedback?.explanation}</p>
 
                   {!answerState.showDetailed ? (
                     <Button
@@ -568,10 +591,16 @@ export function PracticeExam({
                     </Button>
                   ) : (
                     <p className="mt-2 text-muted-foreground">
-                      {question.detailedExplanation}
+                      {questionFeedback?.detailedExplanation}
                     </p>
                   )}
                 </div>
+              )}
+
+              {checkError && (
+                <p className="text-sm text-destructive">
+                  Couldn&apos;t check your answer. Please try again.
+                </p>
               )}
             </CardContent>
             <CardFooter className="justify-between gap-2">
@@ -585,10 +614,10 @@ export function PracticeExam({
               <div className="flex gap-2">
                 {mode === "practice" && !answerState.submitted && (
                   <Button
-                    onClick={handleSubmitAnswer}
-                    disabled={answerState.selected.length === 0}
+                    onClick={() => void handleSubmitAnswer()}
+                    disabled={answerState.selected.length === 0 || checkingAnswer}
                   >
-                    Submit answer
+                    {checkingAnswer ? "Checking…" : "Submit answer"}
                   </Button>
                 )}
                 {mode === "exam" && (
