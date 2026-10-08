@@ -17,7 +17,7 @@ import { prisma } from "@/lib/prisma"
 export const metadata: Metadata = {
   title: "ExamOps — Cloud, DevOps & AI certification prep",
   description:
-    "Practice exams, quick notes, and an AI tutor that actually explains what you got wrong.",
+    "Practice exams and quick notes with an explanation for every answer.",
 }
 
 // The cert filter chips update only the `?vendor=` query string on this same
@@ -27,24 +27,24 @@ export const dynamic = "force-dynamic"
 
 const VALUE_PROPS = [
   {
-    title: "Real exam count and weights",
-    body: "Practice sets match actual exam length and domain distribution.",
+    title: "Real exam length",
+    body: "Practice sets match the real exam's question count and time limit.",
   },
   {
     title: "Two-tier explanations",
     body: "Every question ships with a quick take and a deeper breakdown.",
   },
   {
-    title: "AI that helps, quietly",
-    body: "Ask on any question, get a roadmap from a diagnostic, no chat clutter.",
+    title: "Learn from every miss",
+    body: "Every answer explains why it is right, with a deeper breakdown when you want it.",
   },
 ]
 
 const HOW_IT_WORKS = [
-  "Pick a cert",
-  "Take a diagnostic",
-  "Practice with weighted sets",
-  "Track weak areas until you're ready",
+  "Pick a certification",
+  "Practice a full set",
+  "Read the explanation for every answer",
+  "Review your score by domain",
 ]
 
 type CertWithCounts = {
@@ -166,7 +166,7 @@ export default async function HomePage({
             Cloud, DevOps, and AI certification prep.
           </h1>
           <p className="max-w-xl text-base text-muted-foreground">
-            Practice exams, quick notes, and AI that explains what you got wrong.
+            Practice exams, quick notes, and explanations for every answer.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button render={<Link href="/certs" />}>Browse certifications</Button>

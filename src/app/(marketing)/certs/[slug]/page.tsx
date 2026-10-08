@@ -128,7 +128,7 @@ export default async function CertDetailPage({
           </div>
         ) : (
           <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {cert.practiceSets.slice(0, 5).map((set) => {
+            {cert.practiceSets.map((set) => {
               const hasQuestions = set._count.questions > 0
               return (
                 <Card key={set.id}>
