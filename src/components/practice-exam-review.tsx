@@ -16,10 +16,12 @@ export function PracticeExamReview({
   questions,
   onJump,
   onSubmit,
+  submitting = false,
 }: {
   questions: ReviewQuestionSummary[]
   onJump: (index: number) => void
   onSubmit: () => void
+  submitting?: boolean
 }) {
   const [confirmingSubmit, setConfirmingSubmit] = useState(false)
   const unansweredCount = questions.filter((q) => !q.answered).length
@@ -89,14 +91,16 @@ export function PracticeExamReview({
             <Button variant="outline" onClick={() => setConfirmingSubmit(false)}>
               Go back
             </Button>
-            <Button onClick={onSubmit}>Submit anyway</Button>
+            <Button onClick={onSubmit} disabled={submitting}>
+              {submitting ? "Submitting…" : "Submit anyway"}
+            </Button>
           </div>
         </div>
       )}
 
       {!confirmingSubmit && (
-        <Button size="lg" onClick={handleSubmitClick} className="mt-2">
-          Submit exam
+        <Button size="lg" onClick={handleSubmitClick} disabled={submitting} className="mt-2">
+          {submitting ? "Submitting…" : "Submit exam"}
         </Button>
       )}
     </div>

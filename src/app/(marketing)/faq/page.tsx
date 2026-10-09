@@ -16,17 +16,17 @@ const FAQS = [
   {
     question: "How are the practice questions written?",
     answer:
-      "Every question is written fresh by a human against the official exam guide for that certification — never copied from exam dumps or forums. Each one is checked against current documentation before it ships.",
+      "Every question is original. Questions are drafted with AI assistance from official exam guides and documentation, then checked for accuracy and duplicates before they go live. We never use exam dumps or leaked questions.",
   },
   {
     question: "How are practice exams scored?",
     answer:
-      "Each practice set scores you on percentage correct overall and per domain, using the same domain weighting as the real exam, so you can see where to focus before test day.",
+      "Each practice set has the real exam's question count and time limit. Your score is the percentage of questions you answer correctly, with a breakdown by domain.",
   },
   {
     question: "Do the questions match the real exam?",
     answer:
-      "They're written to match the style, difficulty, and domain weighting of the official exam guides — but they're original questions, not reproductions of real exam content, which no legitimate prep tool can offer.",
+      "They're written to match the style and difficulty of the official exam guides and are mapped to the guide's domains — but they're original questions, not reproductions of real exam content, which no legitimate prep tool can offer.",
   },
   {
     question: "Is there an exam-pass guarantee?",
@@ -36,17 +36,7 @@ const FAQS = [
   {
     question: "What's the difference between Free and Pro?",
     answer:
-      "Free gives you one practice set per certification and quick notes. Pro unlocks every practice set, the AI quick-question tool, the AI roadmap generator, and progress tracking across certs.",
-  },
-  {
-    question: "How do I cancel?",
-    answer:
-      "Cancel anytime from your account settings — you'll keep Pro access until the end of the current billing period, then drop to Free automatically.",
-  },
-  {
-    question: "What's your refund policy?",
-    answer:
-      "If you're within the first 7 days of a paid plan and it's not for you, email us and we'll refund it in full, no questions asked.",
+      "Right now everything is free: every practice set, quick notes, and an explanation for every answer. Pro isn't available yet.",
   },
   {
     question: "When do you add new certifications?",

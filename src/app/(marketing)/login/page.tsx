@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { signIn } from "@/lib/auth"
+import { safeCallbackUrl } from "@/lib/safe-redirect"
 
 export const metadata: Metadata = {
   title: "Log in",
@@ -16,17 +17,26 @@ const GITHUB_CONFIGURED = Boolean(
   process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET
 )
 
-async function signInWithGoogle() {
+// redirectTo is bound into the form and comes back from the browser, so it is
+// re-checked here rather than trusted.
+async function signInWithGoogle(redirectTo: string) {
   "use server"
-  await signIn("google", { redirectTo: "/dashboard" })
+  await signIn("google", { redirectTo: safeCallbackUrl(redirectTo) })
 }
 
-async function signInWithGitHub() {
+async function signInWithGitHub(redirectTo: string) {
   "use server"
-  await signIn("github", { redirectTo: "/dashboard" })
+  await signIn("github", { redirectTo: safeCallbackUrl(redirectTo) })
 }
 
-export default function LoginPage() {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams: { callbackUrl?: string | string[] }
+}) {
+  const callbackUrl =
+    typeof searchParams.callbackUrl === "string" ? searchParams.callbackUrl : undefined
+  const redirectTo = safeCallbackUrl(callbackUrl)
   const noProvidersConfigured = !GOOGLE_CONFIGURED && !GITHUB_CONFIGURED
 
   return (
@@ -39,14 +49,14 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {GOOGLE_CONFIGURED && (
-            <form action={signInWithGoogle}>
+            <form action={signInWithGoogle.bind(null, redirectTo)}>
               <Button type="submit" variant="outline" className="w-full">
                 Continue with Google
               </Button>
             </form>
           )}
           {GITHUB_CONFIGURED && (
-            <form action={signInWithGitHub}>
+            <form action={signInWithGitHub.bind(null, redirectTo)}>
               <Button type="submit" variant="outline" className="w-full">
                 Continue with GitHub
               </Button>

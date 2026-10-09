@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     template: "%s · ExamOps",
   },
   description:
-    "Practice exams, quick notes, and an AI tutor for cloud, DevOps, and AI certifications.",
+    "Practice exams, quick notes, and clear explanations for cloud, DevOps, and AI certifications.",
   openGraph: {
     siteName: "ExamOps",
     type: "website",

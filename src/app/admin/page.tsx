@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/empty-state"
 import { VendorLogo } from "@/components/vendor-logo"
+import { requireAdminPage } from "@/lib/admin-auth"
 import { prisma } from "@/lib/prisma"
 
 export default async function AdminDashboardPage() {
+  await requireAdminPage()
   const certs = await prisma.certification.findMany({
     include: { _count: { select: { questions: true } } },
     orderBy: { name: "asc" },

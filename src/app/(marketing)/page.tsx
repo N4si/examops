@@ -8,15 +8,16 @@ import { Card } from "@/components/ui/card"
 import { CertFilterChips } from "@/components/marketing/cert-filter-chips"
 import { EmptyState } from "@/components/empty-state"
 import { PricingTiers } from "@/components/marketing/pricing-tiers"
+import { ParticleBackground } from "@/components/particle-background"
 import { SampleQuestionPreview } from "@/components/marketing/sample-question-preview"
-import { VendorLogo } from "@/components/vendor-logo"
+import { VendorBadge } from "@/components/vendor-badge"
 import { cn } from "@/lib/utils"
 import { prisma } from "@/lib/prisma"
 
 export const metadata: Metadata = {
   title: "ExamOps — Cloud, DevOps & AI certification prep",
   description:
-    "Practice exams, quick notes, and an AI tutor that actually explains what you got wrong.",
+    "Practice exams and quick notes with an explanation for every answer.",
 }
 
 // The cert filter chips update only the `?vendor=` query string on this same
@@ -26,24 +27,24 @@ export const dynamic = "force-dynamic"
 
 const VALUE_PROPS = [
   {
-    title: "Real exam count and weights",
-    body: "Practice sets match actual exam length and domain distribution.",
+    title: "Real exam length",
+    body: "Practice sets match the real exam's question count and time limit.",
   },
   {
     title: "Two-tier explanations",
     body: "Every question ships with a quick take and a deeper breakdown.",
   },
   {
-    title: "AI that helps, quietly",
-    body: "Ask on any question, get a roadmap from a diagnostic, no chat clutter.",
+    title: "Learn from every miss",
+    body: "Every answer explains why it is right, with a deeper breakdown when you want it.",
   },
 ]
 
 const HOW_IT_WORKS = [
-  "Pick a cert",
-  "Take a diagnostic",
-  "Practice with weighted sets",
-  "Track weak areas until you're ready",
+  "Pick a certification",
+  "Practice a full set",
+  "Read the explanation for every answer",
+  "Review your score by domain",
 ]
 
 type CertWithCounts = {
@@ -62,22 +63,27 @@ function HomeCertCard({ cert }: { cert: CertWithCounts }) {
   const content = (
     <Card
       className={cn(
-        "group relative h-full transition-shadow",
+        // Card already lifts -translate-y-0.5 (2px) and eases transform on
+        // hover by default — just narrowing the transition to transform only
+        // here per the redesign spec's timing (200ms vs the base's 150ms).
+        "group relative h-full transition-transform duration-200",
         !hasSets && "opacity-60",
         hasSets && "hover:shadow-[0_0_20px_-4px_var(--brand-color)]"
       )}
       style={
         {
-          borderTopWidth: 2,
+          borderTopWidth: 3,
           borderTopColor: cert.brandColor,
           "--brand-color": cert.brandColor,
         } as CSSProperties
       }
     >
-      <div className="flex flex-col gap-1.5 p-4">
+      <div className="flex flex-col gap-2 p-4">
         <div className="flex items-center gap-2">
-          <VendorLogo slug={cert.logoSlug} size={20} />
-          <span className="text-xs text-muted-foreground uppercase">{cert.vendor}</span>
+          <VendorBadge slug={cert.logoSlug} vendor={cert.vendor} brandColor={cert.brandColor} />
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            {cert.vendor}
+          </span>
         </div>
         <p className="text-base font-medium">{cert.name}</p>
         <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
@@ -154,12 +160,13 @@ export default async function HomePage({
               "radial-gradient(ellipse 60% 50% at 50% 0%, oklch(0.585 0.233 277.117 / 0.18), transparent 70%)",
           }}
         />
+        <ParticleBackground />
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 text-center">
           <h1 className="max-w-2xl text-4xl font-medium tracking-tight md:text-5xl">
             Cloud, DevOps, and AI certification prep.
           </h1>
           <p className="max-w-xl text-base text-muted-foreground">
-            Practice exams, quick notes, and AI that explains what you got wrong.
+            Practice exams, quick notes, and explanations for every answer.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button render={<Link href="/certs" />}>Browse certifications</Button>
@@ -167,16 +174,26 @@ export default async function HomePage({
               See how it works
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {certCount} cert{certCount === 1 ? "" : "s"} · {questionCount} question
-            {questionCount === 1 ? "" : "s"} · {setCount} practice set
-            {setCount === 1 ? "" : "s"}
-          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {[
+              { value: certCount, label: certCount === 1 ? "Cert" : "Certs" },
+              { value: questionCount, label: questionCount === 1 ? "Question" : "Questions" },
+              { value: setCount, label: setCount === 1 ? "Practice set" : "Practice sets" },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="flex items-center gap-1.5 rounded-full border border-foreground/10 bg-foreground/5 px-4 py-1.5"
+              >
+                <span className="font-semibold text-foreground">{stat.value}</span>
+                <span className="text-sm text-muted-foreground">{stat.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Cert catalog */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
+      <section id="certifications" className="mx-auto max-w-6xl px-6 py-16">
         <p className="text-sm tracking-wider text-muted-foreground uppercase">
           Certifications
         </p>

@@ -6,9 +6,9 @@ import { UserMenu } from "@/components/marketing/user-menu"
 import { auth, signOutAction } from "@/lib/auth"
 
 const LINKS = [
-  { label: "Certifications", href: "#certifications" },
+  { label: "Certifications", href: "/certs" },
+  { label: "Roadmaps", href: "/roadmaps" },
   { label: "Pricing", href: "/pricing" },
-  { label: "Resources", href: "#" },
 ]
 
 export async function MarketingNav() {

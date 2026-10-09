@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "tsx --test 'src/**/*.test.ts'",
     "postinstall": "prisma generate",
     "generate-questions": "tsx scripts/generate-questions/generate.ts"
   },
@@ -16,6 +17,8 @@
     "@google/genai": "^2.13.0",
     "@prisma/client": "^5.22.0",
     "@tailwindcss/typography": "^0.5.20",
+    "@tsparticles/react": "^4.3.2",
+    "@tsparticles/slim": "^4.3.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.24.0",

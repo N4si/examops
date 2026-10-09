@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CreatePracticeSetForm } from "@/components/admin/create-practice-set-form"
 import { EmptyState } from "@/components/empty-state"
+import { requireAdminPage } from "@/lib/admin-auth"
 import { prisma } from "@/lib/prisma"
 
 export default async function AdminCertDetailPage({
@@ -13,6 +14,7 @@ export default async function AdminCertDetailPage({
 }: {
   params: { slug: string }
 }) {
+  await requireAdminPage()
   const cert = await prisma.certification.findUnique({
     where: { slug: params.slug },
     include: {

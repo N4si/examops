@@ -24,21 +24,21 @@ export default async function PracticeSetPage({
     orderBy: { createdAt: "asc" },
   })
 
+  // Answers and explanations stay on the server — they're returned by the
+  // grading server actions only after the user submits.
   const questions: PracticeQuestion[] = rows.map((q) => ({
     id: q.id,
     domain: q.domain,
     text: q.text,
     options: q.options as string[],
-    correctAnswers: q.correctAnswers,
-    explanation: q.explanation,
-    detailedExplanation: q.detailedExplanation,
+    multiSelect: q.correctAnswers.length > 1,
   }))
 
   return (
     <main className="mx-auto max-w-4xl p-6 md:p-8">
       <PracticeExam
         questions={questions}
-        certId={set.certId}
+        setId={set.id}
         certName={`${set.cert.name} — ${set.name}`}
         brandColor={set.cert.brandColor}
         passingScore={set.cert.passingScore}
